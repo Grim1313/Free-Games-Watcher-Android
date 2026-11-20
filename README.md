@@ -4,7 +4,7 @@
 
 Free Games Watcher finds limited-time PC game giveaways on Steam, the Epic Games Store and GOG. Each offer shows the deadline when available and links to the store page where you can claim the game. The app runs on Android 8.0 or later and supports English and Russian.
 
-[Download the APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v0.3.0-beta.1/Free-Games-Watcher-Android-0.3.0-beta.1.apk) · [Release notes for 0.3.0-beta.1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v0.3.0-beta.1) · [Add to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Grim1313/Free-Games-Watcher-Android)
+[Download the APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v0.4.0-beta1/Free-Games-Watcher-Android-0.4.0-beta1.apk) · [Release notes for 0.4.0-beta1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v0.4.0-beta1) · [Add to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Grim1313/Free-Games-Watcher-Android)
 
 ## Installation and updates
 
@@ -15,9 +15,14 @@ The package name is `bz.fgw.android`. The SHA-256 fingerprint of the release sig
 
 ## Using the app
 
-Tap **Check now** to refresh the feed. Each store shows the result and time of its last check. Saved offers remain available offline. In **History**, you can mark a game as **Claimed** or undo that choice. The mark stays with the game if it goes on offer again. You can choose the interface language and the store catalog country independently.
+Tap **Check now** to refresh the regional store listings. The **Giveaways** tab shows confirmed offers. **Upcoming** lists announced Epic promotions with their start dates. An upcoming offer moves to Giveaways after the store confirms it is available. Settings shows the result, time and request count of the last check for each store.
 
-Background checks run every three hours by default. You can choose an interval of 1, 3, 6 or 12 hours in Settings. Turning off all stores also turns off scheduled checks. New giveaways and expiry reminders use separate notification channels. When an offer has a known deadline, the app can send one reminder during a check in its final 24 hours. Quiet hours follow your device’s local time. Tap a notification to open the claim page. For GOG homepage giveaways, this opens the GOG homepage.
+Cards include the original price, Steam positive-review percentage, GOG rating out of five, review count, genres and supported PC platforms when available. Search by title or store ID, select a store, or sort by deadline, discovery time, rating or title. Compact view hides the covers. You can change the catalog country independently of the interface language.
+
+- **Personal marks.** Mark a game as claimed, ignore it until restored, hide the current giveaway or snooze alerts for 24 hours. Manage marks in Settings. Use the New label or **Mark all as read** to clear unread indicators.
+- **Filters.** Choose content types, genres and operating systems, exclude title keywords or Steam IDs, and set Steam review thresholds. Genre and platform filters require matching metadata. DLC, soundtracks, tools and demos are excluded by default.
+- **History and transfer.** Search saved offers offline. In Settings, choose how long to keep history or export settings and personal marks as JSON with optional history. You can import backups from the browser extension and preview the country, marks and history before confirming. Include history to transfer campaign-specific hiding between devices. Imported offers need store confirmation before appearing in the active feed.
+- **Notifications.** Background checks run every three hours by default, with intervals from 15 minutes to 24 hours. Android can delay a scheduled check. Set quiet hours, expiry reminders (1–72 hours before a known deadline) and repeat alerts. New installations use a three-hour reminder window. Updating from the previous beta keeps the 24-hour window. Pause tracking to keep your store selection for later.
 
 ## Data sources and privacy
 

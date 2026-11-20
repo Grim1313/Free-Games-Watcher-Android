@@ -86,14 +86,14 @@ class EpicGogProviderTest {
         val endedAt = Instant.parse("2026-11-21T12:00:00Z").toEpochMilli()
         val emptyBrowse = EpicProvider(StoreHttp { if ("graphql" in it) catalog().toString() else weekly() })
             .fetch("US", emptyList(), endedAt)
-        assertEquals(setOf("epic:test-namespace:123"), emptyBrowse.ended)
+        assertEquals(setOf("epic:test-namespace:123", "epic:test-namespace:456"), emptyBrowse.ended)
         val item = fixture("epic-mafia-hotel.json").put("namespace", "test-namespace").put("id", "123")
         item.getJSONObject("price").getJSONArray("lineOffers").getJSONObject(0)
             .getJSONArray("appliedRules").getJSONObject(0).put("endDate", "2026-11-22T12:00:00Z")
         val confirmed = EpicProvider(StoreHttp { if ("graphql" in it) catalog(item).toString() else weekly() })
             .fetch("US", emptyList(), endedAt)
         assertEquals(1, confirmed.offers.size)
-        assertTrue(confirmed.ended.isEmpty())
+        assertEquals(setOf("epic:test-namespace:456"), confirmed.ended)
     }
 
     @Test fun missingWeeklyEntryDoesNotConfirmEndAndWeeklyKeepsCatalogImage() {
@@ -177,6 +177,12 @@ class EpicGogProviderTest {
         assertEquals("gog:1207659150", result.offers.single().id)
         assertEquals("https://www.gog.com/en/", result.offers.single().url)
         assertEquals(Instant.parse("2026-11-02T14:00:59Z").toEpochMilli(), result.offers.single().end)
+        assertEquals(999L, result.offers.single().originalPrice)
+        assertEquals("USD", result.offers.single().currency)
+        assertEquals("${'$'}9.99", result.offers.single().priceText)
+        assertEquals(3.6, result.offers.single().ratingValue!!, 0.0001)
+        assertEquals(649, result.offers.single().reviewCount)
+        assertEquals(listOf("windows", "mac"), result.offers.single().platforms)
     }
 
     @Test fun gogCatalogZeroPriceDoesNotInventGiveaway() {

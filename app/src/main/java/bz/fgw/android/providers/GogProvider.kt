@@ -4,6 +4,8 @@ package bz.fgw.android.providers
 import org.json.JSONObject
 import java.time.Instant
 import java.util.Locale
+import java.math.BigDecimal
+import java.util.Currency
 
 /** GOG claims are hosted on the homepage. A zero-price catalog row alone proves no giveaway. */
 class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvider {
@@ -80,10 +82,31 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         val type = product.optString("productType")
         val tags = product.optJSONArray("tags")
         val demo = tags != null && (0 until tags.length()).any { tags.getJSONObject(it).optString("slug") == "demo" }
-        if (type !in setOf("game", "pack") || demo) return StoreResult(emptyList())
+        if (type !in setOf("game", "pack", "dlc")) return StoreResult(emptyList())
         if (end <= now) return StoreResult(emptyList(), ended = setOf("gog:$id"))
         if (start != null && start > now) return StoreResult(emptyList())
+        val price = product.optJSONObject("price")
+        val money = price?.optJSONObject("baseMoney")
+        val currency = money?.optString("currency")?.takeIf { it.matches(Regex("[A-Z]{3}")) }
+        val amount = runCatching {
+            BigDecimal(money?.optString("amount")).movePointRight(Currency.getInstance(currency).defaultFractionDigits)
+                .longValueExact().takeIf { it > 0 }
+        }.getOrNull()
+        val genres = product.optJSONArray("genres")
+        val platforms = product.optJSONArray("operatingSystems")
         return StoreResult(listOf(StoreOffer("gog:$id", title.take(300), "https://www.gog.com/en/", start, end,
-            product.optString("coverHorizontal").takeIf { it.isNotBlank() })))
+            product.optString("coverHorizontal").takeIf { StoreUrls.isCover("gog", it) },
+            originalPrice = amount, currency = currency,
+            priceText = price?.optString("base")?.takeIf { amount != null && it.isNotBlank() },
+            ratingValue = product.optDouble("reviewsRating", Double.NaN).takeIf { it > 0 && it <= 50 && product.optInt("reviewsCount") > 0 }?.div(10),
+            reviewCount = product.optInt("reviewsCount", -1).takeIf { it >= 0 },
+            genres = if (genres == null) emptyList() else (0 until genres.length()).mapNotNull {
+                genres.optJSONObject(it)?.optString("name")?.takeIf(String::isNotBlank)
+            }.distinct(),
+            platforms = if (platforms == null) emptyList() else (0 until platforms.length()).map {
+                platforms.optString(it).let { platform -> if (platform == "osx") "mac" else platform }
+            }.filter { it in setOf("windows", "mac", "linux") }.distinct(),
+            contentType = when { demo -> "demo"; type == "pack" -> "package"; type == "dlc" -> "dlc"; else -> "game" },
+        )))
     }
 }

@@ -88,11 +88,12 @@ class MainActivity : ComponentActivity() {
             val savedOffer = savedInstanceState?.getString("notificationOffer")
             if (savedOffer != null) notificationOffer = watchRepository.findOffer(savedOffer)
             if (savedInstanceState == null) handleNotification(intent)
-            watchRepository.state.map { it.language }.distinctUntilChanged().collect { language ->
+            watchRepository.state.map { it.settings.language }.distinctUntilChanged().collect { language ->
                 if (Build.VERSION.SDK_INT >= 33) {
                     val manager = getSystemService(LocaleManager::class.java)
-                    if (manager.applicationLocales.toLanguageTags() != language) {
-                        manager.applicationLocales = LocaleList.forLanguageTags(language)
+                    val tags = if (language == "auto") "" else language
+                    if (manager.applicationLocales.toLanguageTags() != tags) {
+                        manager.applicationLocales = LocaleList.forLanguageTags(tags)
                     }
                 }
             }

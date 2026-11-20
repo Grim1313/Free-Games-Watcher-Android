@@ -21,7 +21,7 @@ class SteamProviderTest {
                 item(3550490, JSONObject().put("is_free_to_keep", true).put("free_to_keep_ends", 1780333250)))
         }
         val result = SteamProvider(http).fetch("US", emptyList(), now)
-        assertEquals(4, result.requests)
+        assertEquals(10, result.requests)
         assertTrue(result.complete)
         val offers = result.offers.associateBy { it.id }
         assertEquals(3, offers.size)
@@ -112,6 +112,62 @@ class SteamProviderTest {
         assertTrue(StoreUrls.isCover("epic", "https://cdn1.epicgames.com/test.jpg"))
     }
 
+    @Test fun confirmedGameIncludesRegionalPriceMetadataAndAllLanguageReviews() {
+        val http = Fake().apply {
+            featured = """{"specials":{"items":[{"id":42,"name":"Featured game","final_price":0,"original_price":999}]}}"""
+            items = listOf(item(42, keep))
+            details = """{"42":{"success":true,"data":{"type":"dlc","price_overview":{"initial":999,"currency":"USD","initial_formatted":"${'$'}9.99"},"genres":[{"description":"RPG"}],"platforms":{"windows":true,"mac":false,"linux":true}}}}"""
+            reviews = """{"success":1,"query_summary":{"total_reviews":100,"total_positive":92}}"""
+        }
+        val offer = SteamProvider(http).fetch("US", emptyList(), now).offers.single()
+        assertEquals(999L, offer.originalPrice)
+        assertEquals("USD", offer.currency)
+        assertEquals("${'$'}9.99", offer.priceText)
+        assertEquals(92, offer.ratingPercent)
+        assertEquals(100, offer.reviewCount)
+        assertEquals(listOf("RPG"), offer.genres)
+        assertEquals(listOf("windows", "linux"), offer.platforms)
+        assertEquals("dlc", offer.contentType)
+        assertTrue(http.urls.any { "/appreviews/42?" in it && "language=all" in it && "purchase_type=steam" in it })
+    }
+
+    @Test fun metadataRateLimitKeepsConfirmedGiveawayAndStopsEnrichmentRequests() {
+        val http = Fake().apply {
+            featured = """{"specials":{"items":[{"id":42,"name":"Featured game","final_price":0,"original_price":999}]}}"""
+            items = listOf(item(42, keep))
+            metadataFailure = StoreHttpException(429, 120_000)
+        }
+        val result = SteamProvider(http).fetch("US", emptyList(), now)
+        assertEquals(1, result.offers.size)
+        assertEquals(120_000L, result.retryAfterMillis)
+        assertFalse(http.urls.any { "appreviews" in it })
+    }
+
+    @Test fun storeBrowseSuppliesReviewsWhenReviewEndpointIsUnavailable() {
+        val http = Fake().apply {
+            items = listOf(item(42, keep)
+                .put("reviews", JSONObject().put("summary_filtered", JSONObject()
+                    .put("review_count", 40395).put("percent_positive", 86)))
+                .put("platforms", JSONObject().put("windows", true).put("steamos_linux", true)))
+        }
+        val known = StoreOffer("app:42", "Game", "https://store.steampowered.com/app/42/")
+        val result = SteamProvider(http).fetch("US", listOf(known), now).offers.single()
+        assertEquals(86, result.ratingPercent)
+        assertEquals(40395, result.reviewCount)
+        assertEquals(listOf("windows", "linux"), result.platforms)
+        assertFalse(http.urls.any { "appreviews" in it })
+    }
+
+    @Test fun storeBrowseContentTypesUseItsOwnEnum() {
+        val http = Fake().apply {
+            items = listOf(item(42, keep).put("type", 4), item(43, keep).put("type", 11),
+                item(44, keep).put("type", 1), item(45, keep).put("type", 6))
+        }
+        val known = (42L..45L).map { StoreOffer("app:$it", "Content $it", "https://store.steampowered.com/app/$it/") }
+        val offers = SteamProvider(http).fetch("US", known, now).offers.associate { it.id to it.contentType }
+        assertEquals(mapOf("app:42" to "dlc", "app:43" to "soundtrack", "app:44" to "demo", "app:45" to "tool"), offers)
+    }
+
     private fun item(id: Long, purchase: JSONObject) = JSONObject().put("id", id)
         .put("item_type", 0).put("type", 0).put("best_purchase_option", purchase)
 
@@ -126,6 +182,9 @@ class SteamProviderTest {
         var featured = """{"specials":{"items":[]}}"""
         var productPage = "<html>Age check</html>"
         var items = emptyList<JSONObject>()
+        var details = "{}"
+        var reviews = "{}"
+        var metadataFailure: Exception? = null
         var nextPage: () -> String = { error("Unexpected next page") }
         override fun get(url: String): String {
             urls += url
@@ -136,6 +195,8 @@ class SteamProviderTest {
                 url.contains("featuredcategories") -> featured
                 url.contains("GetItems") -> JSONObject().put("response", JSONObject()
                     .put("store_items", JSONArray(items))).toString()
+                url.contains("appdetails") -> { metadataFailure?.let { throw it }; details }
+                url.contains("appreviews") -> reviews
                 url.contains("/app/") || url.contains("/sub/") -> productPage
                 else -> error("Unexpected request: $url")
             }

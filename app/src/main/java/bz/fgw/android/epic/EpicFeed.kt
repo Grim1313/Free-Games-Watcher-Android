@@ -15,6 +15,12 @@ data class EpicOffer(
     val start: Long,
     val end: Long,
     val imageUrl: String? = null,
+    val originalPrice: Long? = null,
+    val currency: String? = null,
+    val priceText: String? = null,
+    val genres: List<String> = emptyList(),
+    val platforms: List<String> = emptyList(),
+    val contentType: String = "game",
 )
 
 data class FeedResult(
@@ -25,6 +31,7 @@ data class FeedResult(
     val requestCount: Int = 1,
     val checkedAt: Long = System.currentTimeMillis(),
     val ended: Set<String> = emptySet(),
+    val upcoming: List<EpicOffer> = emptyList(),
 )
 
 fun interface EpicTransport {
@@ -80,10 +87,13 @@ class EpicFeed(
         val offers = linkedMapOf<String, EpicOffer>()
         val warnings = mutableListOf<String>()
         val ended = mutableSetOf<String>()
+        val upcoming = linkedMapOf<String, EpicOffer>()
         for (index in 0 until elements.length()) {
             try {
                 val item = elements.getJSONObject(index)
-                parseItem(item, region, now, ended)?.let { offers[it.id] = it }
+                parseItem(item, region, now, ended)?.let {
+                    if (it.start > now) upcoming[it.id] = it else offers[it.id] = it
+                }
             } catch (error: IllegalArgumentException) {
                 warnings.add("Offer $index: ${error.message}")
             } catch (error: org.json.JSONException) {
@@ -91,15 +101,15 @@ class EpicFeed(
             }
         }
         return FeedResult(offers.values.toList(), warnings.isEmpty(), warnings,
-            elements.length(), checkedAt = now, ended = ended - offers.keys)
+            elements.length(), checkedAt = now, ended = ended - offers.keys,
+            upcoming = upcoming.values.filter { it.id !in offers }.sortedBy { it.start })
     }
 
     private fun parseItem(item: JSONObject, region: String, now: Long, ended: MutableSet<String>): EpicOffer? {
         val categories = item.optJSONArray("categories").objects().map { it.optString("path") }
         val type = item.optString("offerType")
-        if (type == "DEMO" || "games/demo" in categories) return null
-        if (type !in setOf("BASE_GAME", "EDITION", "BUNDLE") &&
-            categories.none { it in setOf("games/edition/base", "games/edition", "bundles/games") }) {
+        if (type !in setOf("BASE_GAME", "EDITION", "BUNDLE", "DLC", "ADD_ON", "DEMO") &&
+            categories.none { it in setOf("games/edition/base", "games/edition", "bundles/games", "addons", "games/demo") }) {
             return null
         }
         val blacklist = item.optJSONArray("countriesBlacklist").strings()
@@ -110,10 +120,13 @@ class EpicFeed(
         val price = item.optJSONObject("price")?.optJSONObject("totalPrice")
         val original = price?.opt("originalPrice")
         if (original is Number && original.toDouble() == 0.0) return null
-        val groups = item.optJSONObject("promotions")?.optionalArray("promotionalOffers")
+        val promotions = item.optJSONObject("promotions")
+        val groups = promotions?.optionalArray("promotionalOffers").objects() +
+            promotions?.optionalArray("upcomingPromotionalOffers").objects()
         var active: Pair<Long, Long>? = null
+        var future: Pair<Long, Long>? = null
         var expired = false
-        for (group in groups.objects()) {
+        for (group in groups) {
             for (window in group.getJSONArray("promotionalOffers").objects()) {
                 val discount = window.optJSONObject("discountSetting") ?: continue
                 if (discount.optString("discountType") != "PERCENTAGE" ||
@@ -122,10 +135,11 @@ class EpicFeed(
                 val end = date(window.getString("endDate"))
                 require(end > start) { "Invalid promotion dates" }
                 if (start <= now && end > now) active = start to end
+                if (start > now && (future == null || start < future.first)) future = start to end
                 if (end <= now) expired = true
             }
         }
-        if (active == null && !expired) return null
+        if (active == null && future == null && !expired) return null
         require(original is Number && original.toDouble() > 0 &&
             original.toDouble() % 1.0 == 0.0 && original.toDouble() <= 9_007_199_254_740_991.0) {
             "Unknown original price"
@@ -133,12 +147,12 @@ class EpicFeed(
         val namespace = item.getString("namespace")
         val id = item.getString("id")
         require(identity.matches(namespace) && identity.matches(id)) { "Invalid offer identity" }
-        if (active == null) {
+        if (active == null && future == null) {
             ended += "epic:$namespace:$id"
             return null
         }
         val final = price.opt("discountPrice")
-        require(final is Number && final.toDouble() == 0.0) { "Unconfirmed free price" }
+        if (active != null) require(final is Number && final.toDouble() == 0.0) { "Unconfirmed free price" }
         val title = item.getString("title").trim()
         require(title.isNotEmpty()) { "Missing title" }
         val slug = item.optJSONArray("offerMappings").objects()
@@ -152,7 +166,11 @@ class EpicFeed(
         val images = item.optJSONArray("keyImages").objects()
         val image = (images.firstOrNull { it.optString("type") == "OfferImageWide" }
             ?: images.firstOrNull { it.optString("type") == "Thumbnail" })?.optString("url")?.takeIf { it.isNotBlank() }
-        return EpicOffer("epic:$namespace:$id", title.take(300), url, active.first, active.second, image)
+        val window = active ?: requireNotNull(future)
+        return EpicOffer("epic:$namespace:$id", title.take(300), url, window.first, window.second, image,
+            originalPrice = original.toLong(), currency = price.optString("currencyCode").takeIf { it.matches(Regex("[A-Z]{3}")) },
+            priceText = EpicMetadata.priceText(price), genres = EpicMetadata.genres(item),
+            platforms = EpicMetadata.platforms(item), contentType = EpicMetadata.contentType(item))
     }
 
     private fun date(value: String): Long = try {

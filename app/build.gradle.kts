@@ -12,8 +12,8 @@ android {
         applicationId = "bz.fgw.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.3.0-beta.1"
+        versionCode = 5
+        versionName = "0.4.0-beta1"
         testInstrumentationRunner = "bz.fgw.android.BetaTestRunner"
     }
     buildTypes {
@@ -30,6 +30,11 @@ android {
 
 ksp {
     arg("room.schemaLocation", layout.projectDirectory.dir("schemas").asFile.absolutePath)
+}
+
+// Both variants export the same Room schema to the checked-in directory.
+tasks.matching { it.name == "kspReleaseKotlin" }.configureEach {
+    mustRunAfter("kspDebugKotlin")
 }
 
 dependencies {

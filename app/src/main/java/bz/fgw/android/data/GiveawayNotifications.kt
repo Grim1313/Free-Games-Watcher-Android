@@ -42,6 +42,23 @@ internal class GiveawayNotifications(private val context: Context) {
             manager.getNotificationChannel(channel)?.importance != NotificationManager.IMPORTANCE_NONE
     }
 
+    fun showTest(language: String): Boolean {
+        createChannels(language)
+        if (!canNotify(NEW_GIVEAWAYS_CHANNEL)) return false
+        val intent = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val ru = language == "ru"
+        val notification = NotificationCompat.Builder(context, NEW_GIVEAWAYS_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(if (ru) "Проверка уведомлений" else "Test notification")
+            .setContentText(if (ru) "Free Games Watcher может показывать оповещения о раздачах." else "Free Games Watcher can show giveaway alerts.")
+            .setContentIntent(intent).setAutoCancel(true).setTimeoutAfter(60_000).build()
+        return try {
+            manager.notify("test", 1, notification)
+            true
+        } catch (_: SecurityException) { false }
+    }
+
     fun show(offer: StoredOffer, type: String, language: String, now: Long): Boolean {
         createChannels(language)
         val channel = if (type == "reminder") REMINDERS_CHANNEL else NEW_GIVEAWAYS_CHANNEL
@@ -61,11 +78,17 @@ internal class GiveawayNotifications(private val context: Context) {
                 .withLocale(Locale.forLanguageTag(language)).withZone(ZoneId.systemDefault())
                 .format(Instant.ofEpochMilli(it))
         }
-        val text = if (deadline == null) {
+        val summary = if (deadline == null) {
             if (ru) "$store · срок окончания неизвестен" else "$store · end date unknown"
         } else {
             if (ru) "$store · бесплатно до $deadline" else "$store · free until $deadline"
         }
+        val rating = when {
+            offer.ratingPercent != null -> if (ru) "Положительные отзывы: ${offer.ratingPercent}%" else "${offer.ratingPercent}% positive reviews"
+            offer.ratingValue != null -> "${offer.ratingValue}/5"
+            else -> null
+        }
+        val text = listOfNotNull(summary, offer.priceText?.takeIf { it.isNotBlank() }, rating).joinToString(" · ")
         val title = if (type == "reminder") {
             if (ru) "Скоро закончится · ${offer.title}" else "Ending soon · ${offer.title}"
         } else offer.title

@@ -25,7 +25,7 @@ class PublicStoreHttp(
             connection.readTimeout = 12_000
             connection.useCaches = false
             connection.instanceFollowRedirects = false
-            connection.setRequestProperty("User-Agent", "FreeGamesWatcherAndroid/0.3")
+            connection.setRequestProperty("User-Agent", "FreeGamesWatcherAndroid/0.4")
             val productPage = uri.host == "store.steampowered.com" &&
                 (uri.path.startsWith("/app/") || uri.path.startsWith("/sub/"))
             connection.setRequestProperty("Accept", if (productPage) "text/html" else "application/json")

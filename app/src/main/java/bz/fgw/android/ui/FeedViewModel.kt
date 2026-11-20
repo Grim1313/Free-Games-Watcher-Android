@@ -3,6 +3,10 @@ package bz.fgw.android.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import bz.fgw.android.data.BackupData
+import bz.fgw.android.data.FilterPreferences
+import bz.fgw.android.data.exportBackup
+import bz.fgw.android.data.importBackup
 import bz.fgw.android.data.FeedState
 import bz.fgw.android.data.StoredOffer
 import bz.fgw.android.watchRepository
@@ -40,7 +44,25 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
         scan()
     }
     fun setLanguage(language: String) = save { repository.setLanguage(language) }
-    fun setInterval(hours: Int) = save { repository.setInterval(hours) }
+    fun setIntervalMinutes(minutes: Int) = save { repository.setIntervalMinutes(minutes) }
+    fun setReminderHours(hours: Int) = save { repository.setReminderHours(hours) }
+    fun setRepeatAlerts(enabled: Boolean, days: Int) = save { repository.setRepeatAlerts(enabled, days) }
+    fun setBadge(enabled: Boolean) = save { repository.setBadge(enabled) }
+    fun resetSettings() = save { repository.resetSettings() }
+    suspend fun testNotification(): Boolean = repository.testNotification()
+    fun setHistory(enabled: Boolean, days: Int) = save { repository.setHistory(enabled, days) }
+    fun setTracking(enabled: Boolean) = save { repository.setTracking(enabled) }
+    fun setFilters(filters: FilterPreferences) = save { repository.setFilters(filters) }
+    fun setSort(sort: String) = save { repository.setSort(sort) }
+    fun setCompact(compact: Boolean) = save { repository.setCompact(compact) }
+    fun act(offer: StoredOffer, action: String) = save { repository.act(offer, action) }
+    fun restoreMark(key: String) = save { repository.restoreMark(key) }
+    fun clearHistory() = save { repository.clearHistory() }
+    fun clearMarks() = save { repository.clearMarks() }
+    fun markAllRead() = save { repository.markAllRead() }
+
+    suspend fun exportBackup(includeHistory: Boolean): String = repository.exportBackup(includeHistory)
+    suspend fun importBackup(data: BackupData, includeHistory: Boolean) = repository.importBackup(data, includeHistory)
     fun setNotificationsEnabled(enabled: Boolean) = save { repository.setNotificationsEnabled(enabled) }
     fun setReminders(enabled: Boolean) = save { repository.setReminders(enabled) }
     fun setQuietHours(enabled: Boolean, start: Int, end: Int) = save { repository.setQuietHours(enabled, start, end) }

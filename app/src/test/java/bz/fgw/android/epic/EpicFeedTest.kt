@@ -9,7 +9,7 @@ class EpicFeedTest {
     private val now = Instant.parse("2026-11-19T12:00:00Z").toEpochMilli()
     private val feed = EpicFeed(clock = { now })
 
-    @Test fun frozenExtensionExampleIncludesCurrentAndExcludesFuture() {
+    @Test fun frozenExtensionExampleSeparatesCurrentAndFutureOffers() {
         val result = feed.parse(fixture("weekly.json"), "US")
         assertTrue(result.complete)
         assertEquals(2, result.catalogCount)
@@ -18,6 +18,11 @@ class EpicFeedTest {
         assertEquals("https://store.epicgames.com/en-US/p/test-game", offer.url)
         assertEquals(now - 86_400_000, offer.start)
         assertEquals(now + 86_400_000, offer.end)
+        assertEquals(1999L, offer.originalPrice)
+        assertEquals("USD", offer.currency)
+        assertEquals("${'$'}19.99", offer.priceText)
+        assertEquals("epic:test-namespace:456", result.upcoming.single().id)
+        assertEquals(now + 3_600_000, result.upcoming.single().start)
     }
 
     @Test fun permanentlyFreeNegativeExampleMatchesExtension() {
@@ -51,9 +56,18 @@ class EpicFeedTest {
         assertFalse(result.complete)
     }
 
-    @Test fun demoIsExcludedDespiteTemporaryZeroPrice() {
+    @Test fun confirmedDemoIsTypedForUserContentFilters() {
         val json = mutated { put("offerType", "DEMO") }
-        assertTrue(feed.parse(json, "US").offers.isEmpty())
+        assertEquals("demo", feed.parse(json, "US").offers.single().contentType)
+    }
+
+    @Test fun metadataUsesOnlyRecognizedGenreAndPlatformTags() {
+        val json = mutated { put("tags", org.json.JSONArray()
+            .put(JSONObject().put("id", "1367")).put(JSONObject().put("id", "9547"))
+            .put(JSONObject().put("id", "unknown")).put(JSONObject().put("id", "1367"))) }
+        val offer = feed.parse(json, "US").offers.single()
+        assertEquals(listOf("RPG"), offer.genres)
+        assertEquals(listOf("windows"), offer.platforms)
     }
 
     @Test fun unconfirmedPriceProducesPartialResult() {

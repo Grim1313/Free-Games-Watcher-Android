@@ -43,7 +43,19 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
             if (candidates.isEmpty() || !complete) source("Steam featured", STORE_HOST) { featured() }
 
             val entries = candidates.toMutableMap()
-            for (offer in known) if (offer.id.matches(STEAM_ID)) entries.putIfAbsent(offer.id, offer)
+            for (offer in known) if (offer.id.matches(STEAM_ID)) {
+                val found = entries[offer.id]
+                entries[offer.id] = found?.copy(
+                    originalPrice = found.originalPrice ?: offer.originalPrice,
+                    currency = found.currency ?: offer.currency,
+                    priceText = found.priceText ?: offer.priceText,
+                    ratingPercent = found.ratingPercent ?: offer.ratingPercent,
+                    reviewCount = found.reviewCount ?: offer.reviewCount,
+                    genres = found.genres.ifEmpty { offer.genres },
+                    platforms = found.platforms.ifEmpty { offer.platforms },
+                    contentType = offer.contentType,
+                ) ?: offer
+            }
             // Keep the URL below common proxy limits, and bound traffic even with a very large cache.
             if (entries.size > VERIFY_LIMIT) {
                 complete = false
@@ -52,6 +64,7 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
             entries.values.take(VERIFY_LIMIT).chunked(50).forEach { batch ->
                 source("Steam StoreBrowse", API_HOST) { verify(batch) }
             }
+            for (offer in active.values.toList().take(20)) enrich(offer)
             return StoreResult(active.values.toList(), complete, ended, requests,
                 diagnostics.joinToString(" · "), retryAfter, successful)
         }
@@ -115,7 +128,11 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
                     val time = deadline?.let { it.attr("data-discount_expiration").ifEmpty { it.attr("data-discount-end-date") } }
                     val offer = StoreOffer("$type:$number", title.take(300), "https://$STORE_HOST/$type/$number/",
                         end = timestamp(time?.toLongOrNull()),
-                        imageUrl = row.selectFirst(".search_capsule img")?.attr("src")?.takeIf { StoreUrls.isCover("steam", it) })
+                        imageUrl = row.selectFirst(".search_capsule img")?.attr("src")?.takeIf { StoreUrls.isCover("steam", it) },
+                        priceText = original.takeIf { it.isNotBlank() },
+                        platforms = row.select(".platform_img").flatMap { it.classNames() }
+                            .mapNotNull { when (it) { "win" -> "windows"; "mac" -> "mac"; "linux" -> "linux"; else -> null } }.distinct(),
+                        contentType = if (type == "sub") "package" else "game")
                     candidates.putIfAbsent(offer.id, offer)
                 }
                 successful = true
@@ -150,7 +167,8 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
             }
             val input = JSONObject().put("ids", ids)
                 .put("context", JSONObject().put("country_code", country).put("language", "english"))
-                .put("data_request", JSONObject().put("include_purchase_options", true))
+                .put("data_request", JSONObject().put("include_purchase_options", true)
+                    .put("include_reviews", true).put("include_platforms", true))
             val url = "https://$API_HOST/IStoreBrowseService/GetItems/v1/?input_json=" +
                 URLEncoder.encode(input.toString(), "UTF-8")
             val rows = json(url).getJSONObject("response").getJSONArray("store_items")
@@ -165,7 +183,7 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
                 checked += id
                 if (row.optBoolean("unvailable_for_country_restriction") ||
                     row.optBoolean("unavailable_for_country_restriction") ||
-                    (type == "app" && row.optInt("type", 0) != 0)) continue
+                    (type == "app" && row.optInt("type", 0) !in setOf(0, 1, 2, 4, 6, 11, 13))) continue
                 val options = buildList {
                     row.optJSONObject("best_purchase_option")?.let(::add)
                     val other = row.optJSONArray("purchase_options") ?: return@buildList
@@ -181,7 +199,21 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
                 val purchase = keep ?: confirmedDiscount
                 if (purchase != null) {
                     val end = timestamp(purchase.optLong("free_to_keep_ends")) ?: candidate.end ?: productDeadline(candidate)
-                    if (end == null || end > now) active[id] = candidate.copy(end = end)
+                    val reviews = row.optJSONObject("reviews")?.optJSONObject("summary_filtered")
+                    val reviewCount = reviews?.optInt("review_count", -1)?.takeIf { it > 0 }
+                    val ratingPercent = reviews?.optInt("percent_positive", -1)?.takeIf { it in 0..100 && reviewCount != null }
+                    val platforms = row.optJSONObject("platforms")
+                    if (end == null || end > now) active[id] = candidate.copy(end = end,
+                        originalPrice = purchase.optLong("original_price_in_cents").takeIf { it > 0 } ?: candidate.originalPrice,
+                        priceText = purchase.optString("formatted_original_price").takeIf { it.isNotBlank() } ?: candidate.priceText,
+                        ratingPercent = ratingPercent ?: candidate.ratingPercent,
+                        reviewCount = if (ratingPercent != null) reviewCount else candidate.reviewCount,
+                        platforms = if (platforms == null) candidate.platforms else listOf("windows", "mac", "linux").filter {
+                            platforms.optBoolean(if (it == "linux") "steamos_linux" else it)
+                        },
+                        contentType = if (type == "sub") "package" else when (row.optInt("type", 0)) {
+                            6, 13 -> "tool"; 1 -> "demo"; 4 -> "dlc"; 11 -> "soundtrack"; else -> "game"
+                        })
                     else ended += id
                 } else if (options.isNotEmpty() && options.all { it.optLong("final_price_in_cents", -1) > 0 }) {
                     ended += id
@@ -192,6 +224,52 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
                 diagnostics += "StoreBrowse: ${(byId.keys - checked).size} unverified"
             }
             successful = true
+        }
+
+        private fun enrich(offer: StoreOffer) {
+            if (!offer.id.startsWith("app:") || STORE_HOST in blockedHosts) return
+            val id = offer.id.substringAfter(':')
+            var enriched = offer
+            try {
+                val payload = json("https://$STORE_HOST/api/appdetails?appids=$id&cc=$region&l=english&filters=basic,price_overview,genres,platforms").optJSONObject(id)
+                val data = payload?.takeIf { it.optBoolean("success") }?.optJSONObject("data")
+                if (data != null) {
+                    val price = data.optJSONObject("price_overview")
+                    val genres = data.optJSONArray("genres")
+                    val platforms = data.optJSONObject("platforms")
+                    val type = when (data.optString("type")) {
+                        "dlc" -> "dlc"; "demo" -> "demo"; "music" -> "soundtrack"
+                        "application", "tool", "software" -> "tool"; else -> enriched.contentType
+                    }
+                    enriched = enriched.copy(
+                        originalPrice = price?.optLong("initial")?.takeIf { it > 0 } ?: enriched.originalPrice,
+                        currency = price?.optString("currency")?.takeIf { it.matches(Regex("[A-Z]{3}")) } ?: enriched.currency,
+                        priceText = price?.optString("initial_formatted")?.takeIf { it.isNotBlank() } ?: enriched.priceText,
+                        imageUrl = data.optString("header_image").takeIf { StoreUrls.isCover("steam", it) } ?: enriched.imageUrl,
+                        genres = if (genres == null) enriched.genres else (0 until genres.length())
+                            .mapNotNull { genres.optJSONObject(it)?.optString("description")?.takeIf(String::isNotBlank) }.distinct(),
+                        platforms = if (platforms == null) enriched.platforms else listOf("windows", "mac", "linux").filter { platforms.optBoolean(it) },
+                        contentType = if (Regex("\\b(?:soundtrack|ost)\\b", RegexOption.IGNORE_CASE).containsMatchIn(enriched.title)) "soundtrack" else type,
+                    )
+                }
+            } catch (failure: Exception) { metadataFailure(failure) }
+            if (STORE_HOST !in blockedHosts && enriched.ratingPercent == null) try {
+                val response = json("https://$STORE_HOST/appreviews/$id?json=1&language=all&review_type=all&purchase_type=steam&num_per_page=1&filter=recent&cursor=*")
+                val summary = response.takeIf { it.optInt("success") == 1 }?.optJSONObject("query_summary")
+                val total = summary?.optInt("total_reviews", -1) ?: -1
+                val positive = summary?.optInt("total_positive", -1) ?: -1
+                if (total > 0 && positive in 0..total) enriched = enriched.copy(
+                    ratingPercent = kotlin.math.round(positive.toDouble() * 100 / total).toInt(), reviewCount = total)
+            } catch (failure: Exception) { metadataFailure(failure) }
+            active[offer.id] = enriched
+        }
+
+        private fun metadataFailure(failure: Exception) {
+            diagnostics += "Steam metadata: ${failure.message?.take(80) ?: "unavailable"}"
+            if (failure is StoreHttpException && (failure.status == 429 || failure.retryAfterMillis != null)) {
+                blockedHosts += STORE_HOST
+                retryAfter = maxOf(retryAfter ?: 0L, failure.retryAfterMillis ?: 60_000L)
+            }
         }
 
         private fun productDeadline(offer: StoreOffer): Long? {
@@ -233,7 +311,7 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
         const val VERIFY_LIMIT = 150
         val STEAM_ID = Regex("(?:app|sub):[1-9][0-9]{0,9}")
         val LINK_ID = Regex("^/(app|sub)/([1-9][0-9]{0,9})(?:/|$)")
-        val EXCLUDED = Regex("""\b(?:free\s+(?:weekend|week|trial|to\s+play)|play\s+for\s+free|demo|playtest)\b""", RegexOption.IGNORE_CASE)
+        val EXCLUDED = Regex("""\b(?:free\s+(?:weekend|week|trial|to\s+play)|play\s+for\s+free|playtest)\b""", RegexOption.IGNORE_CASE)
         val ZERO_PRICE = Regex("""[^0-9]*0(?:[.,]00)?[^0-9]*""")
         val STEAM_DEADLINE = Regex("""\bbefore\s+([a-z]{3,9})\s+(\d{1,2})(?:,\s*(\d{4}))?\s*@\s*10(?::00)?\s*am\b""", RegexOption.IGNORE_CASE)
 

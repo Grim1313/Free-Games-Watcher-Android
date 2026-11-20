@@ -411,7 +411,7 @@ class RepositoryDeviceTest {
     @Test
     fun reminderUsesFreshCachedDeadlineWhenSearchOmitsTheGame(): Unit = runBlocking {
         var time = now
-        var result = StoreResult(listOf(offer(end = now + 25 * 60 * 60 * 1000L)))
+        var result = StoreResult(listOf(offer(end = now + 4 * 60 * 60 * 1000L)))
         val repository = repository({ result }, { time })
         repository.setNotificationsEnabled(true)
         repository.refresh()
@@ -478,6 +478,81 @@ class RepositoryDeviceTest {
         awaitNotifications(1)
     }
 
+
+    @Test
+    fun futureOfferNeedsConfirmationAndOnlyNotifiesOnceActive() = runBlocking {
+        var time = now
+        val future = offer().copy(start = now + 60_000, end = now + 86_400_000)
+        var result = StoreResult(emptyList(), upcoming = listOf(future))
+        val repository = repository({ result }, { time })
+        repository.setNotificationsEnabled(true)
+        repository.refresh()
+        val campaign = repository.state.first().upcoming.single()
+        assertTrue(repository.state.first().offers.isEmpty())
+        assertTrue(repository.state.first().history.isEmpty())
+        awaitNotifications(0)
+        time += 61_000
+        assertFalse(campaign.activeAt(time))
+        result = StoreResult(listOf(future))
+        repository.refresh()
+        val active = repository.state.first().offers.single()
+        assertEquals(campaign.campaignId, active.campaignId)
+        assertTrue(repository.state.first().upcoming.isEmpty())
+        awaitNotifications(1)
+        repository.act(active, "read")
+        repository.refresh()
+        assertTrue(repository.state.first().offers.single().isRead)
+        assertEquals(1, database.watchDao().deliveredCount())
+    }
+
+    @Test
+    fun filtersAndTimedMarksApplyToBackgroundAlerts() = runBlocking {
+        var time = now
+        val item = offer(now + 5 * 86_400_000L).copy(contentType = "dlc", genres = listOf("RPG"))
+        val repository = repository({ StoreResult(listOf(item)) }, { time })
+        repository.setNotificationsEnabled(true)
+        repository.refresh()
+        awaitNotifications(0)
+        repository.setFilters(FilterPreferences(ignoreDlc = false))
+        repository.refresh()
+        val active = repository.state.first().offers.single()
+        awaitNotifications(1)
+        repository.act(active, "snooze")
+        repository.refresh()
+        awaitNotifications(0)
+        time += 86_400_001
+        repository.refresh()
+        awaitNotifications(1)
+        repository.act(active, "hide")
+        assertTrue(repository.state.first().marks.single().suppresses(active, time))
+        awaitNotifications(0)
+        repository.restoreMark(active.gameKey)
+        repository.act(active, "ignore")
+        repository.clearHistory()
+        assertTrue(repository.state.first().history.isEmpty())
+        repository.refresh()
+        assertEquals(1, repository.state.first().offers.size)
+        assertTrue(repository.state.first().marks.single().ignored)
+        repository.clearMarks()
+        assertTrue(repository.state.first().marks.isEmpty())
+        assertEquals(1, database.watchDao().deliveredCount())
+    }
+
+    @Test
+    fun pauseAndResumePreserveStoreSelection() = runBlocking {
+        var calls = 0
+        val repository = repository({ calls++; StoreResult(listOf(offer())) })
+        repository.setIntervalMinutes(15)
+        repository.setTracking(false)
+        repository.refresh()
+        assertEquals(0, calls)
+        assertEquals(setOf("epic"), repository.state.first().selectedStores)
+        repository.setTracking(true)
+        repository.refresh()
+        assertEquals(1, calls)
+        assertEquals(15, repository.state.first().intervalMinutes)
+    }
+
     @Test
     fun migrationPreservesVersionOneSettingsOffersAndDeliveredEvents() = runBlocking {
         val name = "migration-test.db"
@@ -500,7 +575,7 @@ class RepositoryDeviceTest {
         }
         val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
         try {
@@ -512,8 +587,8 @@ class RepositoryDeviceTest {
             assertEquals("epic", dao.offer("old-campaign")?.store)
             assertEquals(1, dao.deliveredCount())
             assertEquals(3L, dao.check("RU")?.lastSuccess)
-            dao.claim(Claim("epic:epic:test:1", now))
-            assertTrue(dao.isClaimed("epic:epic:test:1"))
+            dao.putMarks(listOf(PersonalMark("epic:epic:test:1", "Old game", "", claimed = true)))
+            assertTrue(dao.mark("epic:epic:test:1")!!.claimed)
         } finally {
             migrated.close()
             context.deleteDatabase(name)

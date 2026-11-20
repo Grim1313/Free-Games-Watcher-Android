@@ -6,6 +6,7 @@ import androidx.room3.Room
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import bz.fgw.android.data.AppRepository
 import bz.fgw.android.data.WatchDatabase
+import bz.fgw.android.data.MIGRATION_2_3
 import bz.fgw.android.data.MIGRATION_1_2
 import kotlinx.coroutines.Dispatchers
 import coil3.ImageLoader
@@ -29,7 +30,7 @@ class FgwApplication : Application(), SingletonImageLoader.Factory {
     val repository by lazy {
         val database = Room.databaseBuilder<WatchDatabase>(this, "watcher.db")
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
         AppRepository(this, database)

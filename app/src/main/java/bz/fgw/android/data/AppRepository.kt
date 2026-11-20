@@ -20,12 +20,15 @@ data class FeedState(
     val settings: WatchSettings = WatchSettings(),
     val offers: List<StoredOffer> = emptyList(),
     val history: List<StoredOffer> = emptyList(),
-    val claimedIds: Set<String> = emptySet(),
+    val marks: List<PersonalMark> = emptyList(),
+    val upcoming: List<StoredOffer> = emptyList(),
     val checks: List<CheckStatus> = emptyList(),
 ) {
+    val claimedIds get() = marks.filter { it.claimed }.map { it.gameKey }.toSet()
+    val intervalMinutes get() = settings.intervalMinutes
     val country get() = settings.country
     val selectedStores get() = settings.selectedStores()
-    val language get() = settings.language
+    val language get() = settings.displayLanguage
     val intervalHours get() = settings.intervalHours
     val notificationsEnabled get() = settings.notificationsEnabled
     val remindersEnabled get() = settings.remindersEnabled
@@ -50,7 +53,7 @@ class AppRepository internal constructor(
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
 ) {
-    private val dao = database.watchDao()
+    internal val dao = database.watchDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val scanMutex = Mutex()
     private val settingsMutex = Mutex()
@@ -58,14 +61,16 @@ class AppRepository internal constructor(
     private val notifier = GiveawayNotifications(context)
 
     val state: Flow<FeedState> = combine(
-        dao.observeSettings(), dao.observeOffers(), dao.observeChecks(), dao.observeClaims(),
-    ) { settingsOrNull, offers, checks, claims ->
+        dao.observeSettings(), dao.observeOffers(), dao.observeChecks(), dao.observeMarks(),
+    ) { settingsOrNull, offers, checks, marks ->
         val settings = settingsOrNull ?: WatchSettings()
+        val regional = offers.filter { it.country == settings.country && it.store in settings.selectedStores() }
         FeedState(
             settings = settings,
-            offers = offers.filter { it.country == settings.country && it.store in settings.selectedStores() },
-            history = offers,
-            claimedIds = claims.toSet(),
+            offers = regional.filter { !it.upcoming && !it.imported },
+            upcoming = regional.filter { it.upcoming && !it.ended && !it.imported },
+            history = if (settings.historyEnabled) offers.filter { !it.upcoming && it.inHistory } else emptyList(),
+            marks = marks,
             checks = checks.filter { it.country == settings.country && it.store in settings.selectedStores() },
         )
     }
@@ -78,13 +83,13 @@ class AppRepository internal constructor(
     }
 
     private suspend fun schedule(settings: WatchSettings) {
-        notifier.createChannels(settings.language)
+        notifier.createChannels(settings.displayLanguage)
         val manager = WorkManager.getInstance(context)
-        if (settings.selectedStores().isEmpty()) {
+        if (!settings.trackFreeToKeep || settings.selectedStores().isEmpty()) {
             manager.cancelUniqueWork(PERIODIC_WORK_NAME).result.get()
             return
         }
-        val request = PeriodicWorkRequestBuilder<EpicCheckWorker>(settings.intervalHours.toLong(), TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<EpicCheckWorker>(settings.intervalMinutes.toLong(), TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
@@ -97,20 +102,62 @@ class AppRepository internal constructor(
         changeSettings(revise = true) { it.copy(country = normalized) }
     }
 
+    suspend fun setTracking(enabled: Boolean) = changeSettings(revise = true, reschedule = true) {
+        it.copy(trackFreeToKeep = enabled)
+    }
+
     suspend fun setStores(stores: Set<String>) {
         require(stores.all { it in SUPPORTED_STORES })
         changeSettings(revise = true, reschedule = true) { it.copy(stores = stores.sorted().joinToString(",")) }
     }
 
     suspend fun setLanguage(language: String) {
-        require(language in setOf("ru", "en"))
+        require(language in setOf("ru", "en", "auto"))
         changeSettings { it.copy(language = language) }
-        notifier.createChannels(language)
+        notifier.createChannels(dao.settings().displayLanguage)
     }
 
-    suspend fun setInterval(hours: Int) {
-        require(hours in setOf(1, 3, 6, 12))
-        changeSettings(reschedule = true) { it.copy(intervalHours = hours) }
+    suspend fun setIntervalMinutes(minutes: Int) {
+        require(minutes in setOf(15, 30, 60, 180, 360, 720, 1440))
+        changeSettings(reschedule = true) { it.copy(intervalHours = minutes / 60, intervalMinutes = minutes) }
+    }
+
+    suspend fun setReminderHours(hours: Int) {
+        require(hours in 1..72)
+        changeSettings { it.copy(reminderHours = hours) }
+    }
+
+    suspend fun setFilters(filters: FilterPreferences) = changeSettings { it.copy(filtersJson = filters.toJson()) }
+
+    suspend fun setSort(sort: String) {
+        require(sort in setOf("ending", "newest", "rating", "title"))
+        changeSettings { it.copy(sortBy = sort) }
+    }
+
+    suspend fun setCompact(compact: Boolean) = changeSettings { it.copy(compactView = compact) }
+
+    suspend fun setBadge(enabled: Boolean) = changeSettings { it.copy(badgeEnabled = enabled) }
+
+    suspend fun resetSettings() = withBackupSettingsLock {
+        transaction {
+            dao.initialize(WatchSettings())
+            dao.saveSettings(WatchSettings(revision = dao.settings().revision + 1))
+        }
+    }
+
+    suspend fun testNotification(): Boolean {
+        dao.initialize(WatchSettings())
+        return notifier.showTest(dao.settings().displayLanguage)
+    }
+
+    suspend fun setHistory(enabled: Boolean, days: Int) {
+        require(days in 1..365)
+        changeSettings { it.copy(historyEnabled = enabled, historyRetentionDays = days) }
+    }
+
+    suspend fun setRepeatAlerts(enabled: Boolean, days: Int) {
+        require(days in 1..365)
+        changeSettings { it.copy(renotifyAfterRetention = enabled, notifiedRetentionDays = days) }
     }
 
     suspend fun setQuietHours(enabled: Boolean, startMinute: Int, endMinute: Int) {
@@ -141,7 +188,7 @@ class AppRepository internal constructor(
                 val next = changed.copy(revision = old.revision + if (revise) 1 else 0)
                 dao.saveSettings(next)
                 when {
-                    old.country != next.country || (old.notificationsEnabled && !next.notificationsEnabled) ->
+                    (old.trackFreeToKeep && !next.trackFreeToKeep) || old.country != next.country || (old.notificationsEnabled && !next.notificationsEnabled) ->
                         notifier.cancelAll()
                     else -> {
                         for (store in old.selectedStores() - next.selectedStores()) {
@@ -156,14 +203,63 @@ class AppRepository internal constructor(
         }
     }
 
-    suspend fun setClaimed(offer: StoredOffer, claimed: Boolean) = settingsMutex.withLock {
-        if (claimed) {
-            dao.claim(Claim(offer.gameKey, clock()))
-            // Every regional campaign for the game shares the claim.
-            for (entry in dao.gameOffers(offer.store, offer.id)) {
-                notifier.cancel(entry.campaignId)
+    suspend fun setClaimed(offer: StoredOffer, claimed: Boolean) = act(offer, if (claimed) "claim" else "unclaim")
+
+    suspend fun act(offer: StoredOffer, action: String) = settingsMutex.withLock {
+        transaction {
+            if (action == "read") {
+                dao.markRead(listOf(offer.campaignId))
+                return@transaction
             }
-        } else dao.unclaim(offer.gameKey)
+            val now = clock()
+            val old = dao.mark(offer.gameKey) ?: PersonalMark(offer.gameKey, offer.title, offer.url)
+            val mark = when (action) {
+                "claim" -> old.copy(claimed = true)
+                "unclaim" -> old.copy(claimed = false)
+                "ignore" -> old.copy(ignored = true)
+                "hide" -> old.copy(hiddenCampaign = offer.campaignId)
+                "snooze" -> old.copy(snoozedUntil = now + TimeUnit.DAYS.toMillis(1), snoozePending = true)
+                "restore" -> PersonalMark(offer.gameKey, offer.title, offer.url)
+                else -> error("Unknown offer action")
+            }
+            if (!mark.claimed && !mark.ignored && mark.hiddenCampaign.isEmpty() && !mark.snoozePending && mark.snoozedUntil <= now) {
+                dao.removeMark(offer.gameKey)
+            } else {
+                dao.putMarks(listOf(mark.copy(title = offer.title, url = offer.url, updatedAt = now)))
+            }
+            if (mark.suppresses(offer, now)) {
+                for (entry in dao.gameOffers(offer.store, offer.id)) {
+                    if (mark.suppresses(entry, now)) notifier.cancel(entry.campaignId)
+                }
+            }
+        }
+    }
+
+    suspend fun restoreMark(key: String) = settingsMutex.withLock { dao.removeMark(key) }
+
+    suspend fun clearMarks() = settingsMutex.withLock { dao.clearMarks() }
+
+    suspend fun clearHistory() = transaction {
+        dao.hideHistory()
+        dao.pruneHistory(clock(), Long.MAX_VALUE)
+        dao.pruneOrphanEvents()
+    }
+
+    suspend fun markAllRead() = transaction {
+        val settings = dao.settings()
+        for (store in settings.selectedStores()) {
+            val ids = dao.knownOffers(store, settings.country).filter { it.activeAt(clock()) && !it.isRead }
+                .map { it.campaignId }
+            ids.chunked(500).forEach { dao.markRead(it) }
+        }
+    }
+
+    internal suspend fun withBackupSettingsLock(block: suspend () -> Unit) = withContext(Dispatchers.IO) {
+        settingsMutex.withLock {
+            block()
+            notifier.cancelAll()
+            schedule(dao.settings())
+        }
     }
 
     suspend fun findOffer(campaignId: String): StoredOffer? = dao.offer(campaignId)
@@ -182,6 +278,7 @@ class AppRepository internal constructor(
 
     private suspend fun scan(settings: WatchSettings, backgroundRetry: Boolean): ScanOutcome {
         if (dao.settings().revision != settings.revision) return ScanOutcome.STALE
+        if (!settings.trackFreeToKeep) return ScanOutcome.SUCCESS
         var retry = false
         for (store in settings.selectedStores()) {
             if (dao.settings().revision != settings.revision) return ScanOutcome.STALE
@@ -201,8 +298,8 @@ class AppRepository internal constructor(
             val result = try {
                 providers.getValue(store).fetch(
                     settings.country,
-                    known.filter { !it.ended && (it.end == null || it.end > started) }
-                        .map { StoreOffer(it.id, it.title, it.url, it.start, it.end, it.imageUrl) },
+                    known.filter { !it.upcoming && !it.ended && (it.end == null || it.end > started) }
+                        .map { it.toStoreOffer() },
                     started,
                 )
             } catch (cancelled: CancellationException) {
@@ -218,6 +315,9 @@ class AppRepository internal constructor(
                 if (dao.settings().revision != settings.revision) return@transaction false
                 val confirmed = clock()
                 val updated = mergeOffers(store, settings, known, result, confirmed)
+                val obsolete = known.filter { it.upcoming && (it.end != null && it.end <= confirmed ||
+                    result.complete && updated.none { next -> next.campaignId == it.campaignId }) }
+                if (obsolete.isNotEmpty()) dao.deleteOffers(obsolete.map { it.campaignId })
                 dao.saveOffers(updated)
                 dao.saveCheck(CheckStatus(
                     country = settings.country, store = store, lastAttempt = started,
@@ -231,18 +331,34 @@ class AppRepository internal constructor(
                 ))
                 val current = dao.settings()
                 if (current.notificationsEnabled) {
-                    val events = updated.filter { it.activeAt(confirmed) && it.confirmedRevision == settings.revision }
-                        .map { NotificationEvent(it.campaignId) }
-                    dao.enqueue(events)
+                    for (entry in updated.filter { it.activeAt(confirmed) && it.confirmedRevision == current.revision }) {
+                        val event = dao.event(entry.campaignId)
+                        val mark = dao.mark(entry.gameKey)
+                        val snoozeExpired = mark?.snoozePending == true && mark.snoozedUntil <= confirmed
+                        val repeat = current.renotifyAfterRetention && event?.delivered == true && event.deliveredAt > 0 &&
+                            confirmed - event.deliveredAt >= TimeUnit.DAYS.toMillis(current.notifiedRetentionDays.toLong())
+                        if (snoozeExpired || repeat) {
+                            dao.resetNewEvent(entry.campaignId)
+                            if (snoozeExpired) {
+                                if (mark.claimed || mark.ignored || mark.hiddenCampaign.isNotEmpty()) {
+                                    dao.putMarks(listOf(mark.copy(snoozePending = false, snoozedUntil = 0)))
+                                } else dao.removeMark(mark.gameKey)
+                            }
+                        }
+                        dao.enqueue(listOf(NotificationEvent(entry.campaignId)))
+                    }
                     if (current.remindersEnabled) {
                         val reminderOffers = dao.knownOffers(store, settings.country).filter {
                             it.activeAt(confirmed) && it.confirmedRevision == settings.revision &&
                                 confirmed - it.lastConfirmed <= NOTIFICATION_FRESHNESS &&
-                                it.end != null && it.end - confirmed <= REMINDER_WINDOW
+                                it.end != null && it.end - confirmed <= TimeUnit.HOURS.toMillis(current.reminderHours.toLong())
                         }
                         dao.enqueue(reminderOffers.map { NotificationEvent(it.campaignId, type = "reminder") })
                     }
                 }
+                val keepSince = if (current.historyEnabled) confirmed - TimeUnit.DAYS.toMillis(current.historyRetentionDays.toLong()) else Long.MAX_VALUE
+                dao.pruneHistory(confirmed, keepSince)
+                dao.pruneOrphanEvents()
                 true
             }
             if (!accepted) return ScanOutcome.STALE
@@ -260,13 +376,16 @@ class AppRepository internal constructor(
         result: StoreResult,
         now: Long,
     ): List<StoredOffer> {
-        val updates = known.filter { !it.ended && (it.id in result.ended || (it.end != null && it.end <= now)) }
+        val updates = known.filter { !it.upcoming && !it.ended && (it.id in result.ended || (it.end != null && it.end <= now)) }
             .map { it.copy(ended = true) }.associateBy { it.campaignId }.toMutableMap()
-        for (offer in result.offers.distinctBy { it.id }) {
-            if (offer.start != null && offer.start > now) continue
+        val candidates = result.offers.filter { it.start == null || it.start <= now }.distinctBy { it.id } +
+            result.upcoming.filter { it.start != null && it.start > now }.distinctBy { it.id to it.start }
+        for (offer in candidates) {
+            val upcoming = offer.start != null && offer.start > now
             if (offer.end != null && offer.end <= now) continue
             val previous = known.firstOrNull { old ->
                 old.id == offer.id && !old.ended && old.id !in result.ended &&
+                    (if (upcoming || old.upcoming) old.start == offer.start else true) &&
                     (old.end == null || old.end > now) &&
                     (old.end == null || offer.start == null || offer.start < old.end)
             }
@@ -277,6 +396,17 @@ class AppRepository internal constructor(
                 offer.start ?: previous?.start, offer.end ?: previous?.end,
                 settings.country, now, settings.revision, store,
                 imageUrl = offer.imageUrl ?: previous?.imageUrl,
+                originalPrice = offer.originalPrice ?: previous?.originalPrice,
+                currency = offer.currency ?: previous?.currency,
+                priceText = offer.priceText ?: previous?.priceText,
+                ratingPercent = offer.ratingPercent ?: previous?.ratingPercent,
+                reviewCount = offer.reviewCount ?: previous?.reviewCount,
+                ratingValue = offer.ratingValue ?: previous?.ratingValue,
+                genres = offer.genres.ifEmpty { previous?.genres.orEmpty() },
+                platforms = offer.platforms.ifEmpty { previous?.platforms.orEmpty() },
+                contentType = offer.contentType, firstSeen = previous?.firstSeen ?: now,
+                isRead = previous?.isRead ?: false, upcoming = upcoming,
+                inHistory = settings.historyEnabled && (previous?.inHistory ?: true),
             )
         }
         return updates.values.toList()
@@ -285,6 +415,8 @@ class AppRepository internal constructor(
     private suspend fun deliverPending(revision: Long, store: String) = settingsMutex.withLock {
         val settings = dao.settings()
         if (settings.revision != revision || !settings.notificationsEnabled || isQuiet(settings, clock(), zone())) return@withLock
+        val filters = FilterPreferences.fromJson(settings.filtersJson)
+        val reminderWindow = TimeUnit.HOURS.toMillis(settings.reminderHours.toLong())
         val pending = dao.pendingEvents().sortedBy { if (it.type == "new") 0 else 1 }
         for (event in pending) {
             val offer = dao.offer(event.campaignId) ?: continue
@@ -295,17 +427,17 @@ class AppRepository internal constructor(
                 dao.markDiscarded(event.campaignId, event.type)
                 continue
             }
-            if (dao.isClaimed(offer.gameKey) || (offer.start != null && offer.start > now)) continue
+            if (!offer.activeAt(now) || !filters.accepts(offer) || dao.mark(offer.gameKey)?.suppresses(offer, now) == true) continue
             if (now - offer.lastConfirmed > NOTIFICATION_FRESHNESS) continue
             if (event.type == "reminder") {
-                if (!settings.remindersEnabled || offer.end == null || offer.end - now > REMINDER_WINDOW) continue
+                if (!settings.remindersEnabled || offer.end == null || offer.end - now > reminderWindow) continue
                 // A new alert delivered in this pass already tells the user about the deadline.
                 if (dao.event(offer.campaignId, "reminder")?.discarded == true) continue
             }
-            if (notifier.show(offer, event.type, settings.language, now)) {
+            if (notifier.show(offer, event.type, settings.displayLanguage, now)) {
                 transaction {
-                    dao.markDelivered(event.campaignId, event.type)
-                    if (event.type == "new" && offer.end != null && offer.end - now <= REMINDER_WINDOW) {
+                    dao.markDelivered(event.campaignId, event.type, now)
+                    if (event.type == "new" && offer.end != null && offer.end - now <= reminderWindow) {
                         dao.enqueue(listOf(NotificationEvent(offer.campaignId, discarded = true, type = "reminder")))
                         dao.markDiscarded(offer.campaignId, "reminder")
                     }
@@ -314,13 +446,12 @@ class AppRepository internal constructor(
         }
     }
 
-    private suspend fun <T> transaction(block: suspend () -> T): T =
+    internal suspend fun <T> transaction(block: suspend () -> T): T =
         database.useWriterConnection { connection -> connection.immediateTransaction { block() } }
 
     companion object {
         // Keep the unique name to replace the stage-one schedule on upgrade.
         const val PERIODIC_WORK_NAME = "epic-weekly-giveaways"
-        const val REMINDER_WINDOW = 24 * 60 * 60 * 1000L
         private const val NOTIFICATION_FRESHNESS = 6 * 60 * 60 * 1000L
 
         internal fun isQuiet(settings: WatchSettings, now: Long, zone: ZoneId): Boolean {
@@ -333,3 +464,8 @@ class AppRepository internal constructor(
         }
     }
 }
+
+private fun StoredOffer.toStoreOffer() = StoreOffer(
+    id, title, url, start, end, imageUrl, originalPrice, currency, priceText,
+    ratingPercent, reviewCount, ratingValue, genres, platforms, contentType,
+)

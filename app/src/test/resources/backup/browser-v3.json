@@ -1,0 +1,113 @@
+{
+  "format": "steam-promo-watch",
+  "version": 3,
+  "exportedAt": "2026-11-20T12:36:59.236Z",
+  "settings": {
+    "enabledStores": [
+      "steam",
+      "epic",
+      "gog"
+    ],
+    "region": "DE",
+    "language": "en",
+    "compactView": false,
+    "sortBy": "ending",
+    "remindersEnabled": true,
+    "reminderHours": 3,
+    "notificationsEnabled": true,
+    "trackFreeToKeep": true,
+    "checkIntervalMinutes": 30,
+    "quietHoursEnabled": false,
+    "quietHoursStart": "23:00",
+    "quietHoursEnd": "08:00",
+    "badgeEnabled": true,
+    "historyEnabled": true,
+    "historyRetentionDays": 30,
+    "notifiedRetentionDays": 14,
+    "renotifyAfterRetention": true,
+    "filters": {
+      "ignoreDlc": true,
+      "ignoreSoundtracks": true,
+      "ignoreDemos": true,
+      "ignoreTools": true,
+      "ignorePackages": false,
+      "blockedAppIds": [
+        456
+      ],
+      "blockedKeywords": [],
+      "minRating": 85,
+      "minReviews": 0,
+      "includeUnrated": true,
+      "genres": [
+        "rpg"
+      ],
+      "platforms": [
+        "windows"
+      ]
+    }
+  },
+  "userActions": {
+    "app:123": {
+      "url": "https://store.steampowered.com/app/123/",
+      "claimed": true,
+      "ignored": false,
+      "snoozePending": false,
+      "hiddenCampaign": "",
+      "snoozedUntil": 0,
+      "title": "Interop game",
+      "updatedAt": 1000
+    }
+  },
+  "history": [
+    {
+      "store": "steam",
+      "claimUrl": "https://store.steampowered.com/app/123/",
+      "campaignId": "browser-campaign",
+      "genres": [
+        "RPG"
+      ],
+      "platforms": [
+        "windows"
+      ],
+      "stale": false,
+      "missingCount": 0,
+      "confirmedEnded": false,
+      "region": "DE",
+      "id": "app:123|free-to-keep",
+      "fingerprint": "browser-campaign",
+      "stableId": "app:123",
+      "appId": 0,
+      "packageId": 0,
+      "title": "Interop game",
+      "promoType": "free-to-keep",
+      "rawTypeLabel": "",
+      "contentType": "unknown",
+      "basePriceFormatted": "19,99 €",
+      "url": "https://store.steampowered.com/app/123/",
+      "headerImage": "",
+      "capsuleImage": "",
+      "screenshotThumbnail": "",
+      "screenshotFull": "",
+      "reviewScore": 0,
+      "reviewScoreDesc": "",
+      "reviewPositive": 0,
+      "reviewNegative": 0,
+      "reviewTotal": 120,
+      "reviewPercent": 92,
+      "gogRating": 0,
+      "gogRatingCount": 0,
+      "sourceId": "",
+      "sourceFingerprint": "",
+      "startsAt": 1000,
+      "endsAt": 9999999999999,
+      "firstSeenAt": 1000,
+      "lastSeenAt": 2000,
+      "lastCheckedAt": 2000,
+      "lastNotifiedAt": 0,
+      "unread": false,
+      "status": "active",
+      "notificationStatus": "pending",
+      "lastStateChangeAt": 0
+    }
+  ]
+}

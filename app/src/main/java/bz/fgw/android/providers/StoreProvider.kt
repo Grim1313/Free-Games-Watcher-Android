@@ -9,6 +9,15 @@ data class StoreOffer(
     val start: Long? = null,
     val end: Long? = null,
     val imageUrl: String? = null,
+    val originalPrice: Long? = null,
+    val currency: String? = null,
+    val priceText: String? = null,
+    val ratingPercent: Int? = null,
+    val reviewCount: Int? = null,
+    val ratingValue: Double? = null,
+    val genres: List<String> = emptyList(),
+    val platforms: List<String> = emptyList(),
+    val contentType: String = "game",
 )
 
 /** A partial response may contain verified offers. Only explicit evidence belongs in [ended]. */
@@ -20,6 +29,7 @@ data class StoreResult(
     val details: String = "",
     val retryAfterMillis: Long? = null,
     val successful: Boolean = true,
+    val upcoming: List<StoreOffer> = emptyList(),
 )
 
 fun interface StoreProvider {
@@ -49,7 +59,7 @@ object StoreUrls {
             uri.rawFragment != null || uri.rawQuery != null) return false
         when (store) {
             "steam" -> uri.host == "store.steampowered.com" && steamPath.matches(uri.rawPath)
-            "epic" -> uri.host == "store.epicgames.com" && epicPath.matches(uri.rawPath)
+            "epic" -> uri.host == "store.epicgames.com" && (uri.rawPath == "/en-US/" || epicPath.matches(uri.rawPath))
             "gog" -> uri.host == "www.gog.com" && (uri.rawPath == "/en/" || gogPath.matches(uri.rawPath))
             else -> false
         }

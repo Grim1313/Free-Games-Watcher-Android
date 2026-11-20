@@ -2,6 +2,8 @@
 package bz.fgw.android.providers
 
 import bz.fgw.android.epic.EpicFeed
+import bz.fgw.android.epic.EpicOffer
+import bz.fgw.android.epic.EpicMetadata
 import bz.fgw.android.epic.StoreLinks
 import org.json.JSONArray
 import org.json.JSONObject
@@ -31,8 +33,9 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
         val weekly = runCatching {
             val raw = request("https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=$region&allowCountries=$region")
             val result = EpicFeed().parse(raw, region, now)
-            StoreResult(result.offers.map { StoreOffer(it.id, it.title, it.url, it.start, it.end, it.imageUrl) },
-                result.complete, ended = result.ended, details = result.warnings.joinToString("; "))
+            StoreResult(result.offers.map(::weeklyOffer),
+                result.complete, ended = result.ended, details = result.warnings.joinToString("; "),
+                upcoming = result.upcoming.map(::weeklyOffer))
         }.getOrElse { StoreResult(emptyList(), complete = false, successful = false, details = it.message.orEmpty()) }
         diagnostics += "weekly: ${if (weekly.complete) "ok" else weekly.details}"
 
@@ -87,13 +90,19 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
             for (offer in source.offers) {
                 val previous = combined[offer.id]
                 combined[offer.id] = offer.copy(start = offer.start ?: previous?.start,
-                    imageUrl = offer.imageUrl ?: previous?.imageUrl)
+                    imageUrl = offer.imageUrl ?: previous?.imageUrl,
+                    originalPrice = offer.originalPrice ?: previous?.originalPrice,
+                    currency = offer.currency ?: previous?.currency,
+                    priceText = offer.priceText ?: previous?.priceText,
+                    genres = offer.genres.ifEmpty { previous?.genres.orEmpty() },
+                    platforms = offer.platforms.ifEmpty { previous?.platforms.orEmpty() })
             }
         }
         val ended = (weekly.ended + direct.ended + mirror?.ended.orEmpty()) - combined.keys
         return StoreResult(combined.values.toList(), weekly.complete && (direct.complete || mirror?.complete == true),
             ended, requests, diagnostics.joinToString(" · "), retryAfter,
-            weekly.successful || direct.successful || mirror?.successful == true)
+            weekly.successful || direct.successful || mirror?.successful == true,
+            upcoming = weekly.upcoming.filter { it.id !in combined })
     }
 
     fun parseCatalog(root: JSONObject, country: String, now: Long): StoreResult {
@@ -141,7 +150,11 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
                 val images = item.optJSONArray("keyImages").objects()
                 val image = (images.firstOrNull { it.optString("type") == "OfferImageWide" }
                     ?: images.firstOrNull { it.optString("type") == "Thumbnail" })?.optString("url")?.takeIf { it.isNotBlank() }
-                offers[id] = StoreOffer(id, title.take(300), productUrl(item), start, end, image)
+                offers[id] = StoreOffer(id, title.take(300), productUrl(item), start, end, image,
+                    originalPrice = original.toLong(),
+                    currency = price.optString("currencyCode").takeIf { it.matches(Regex("[A-Z]{3}")) },
+                    priceText = EpicMetadata.priceText(price), genres = EpicMetadata.genres(item),
+                    platforms = EpicMetadata.platforms(item), contentType = EpicMetadata.contentType(item))
             } catch (error: Exception) { warnings += "record $index: ${error.message}" }
         }
         return StoreResult(offers.values.toList(), warnings.isEmpty(), ended - offers.keys, details = warnings.joinToString("; "))
@@ -159,7 +172,7 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
             try {
                 val item = rawOffers.getJSONObject(index)
                 val categories = item.getJSONArray("categories").strings()
-                if (categories.none { it in gameCategories } || "games/demo" in categories || "addons" in categories) continue
+                if (categories.none { it in gameCategories }) continue
                 if (item.optJSONArray("tags").objects().none { it.optString("id") in setOf("9547", "10719") }) continue
                 if (date(item.getString("effectiveDate")) > now ||
                     (!item.isNull("viewableDate") && date(item.getString("viewableDate")) > now)) continue
@@ -209,8 +222,7 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
     private fun eligible(item: JSONObject, country: String): Boolean {
         val type = item.optString("offerType")
         val categories = item.optJSONArray("categories").objects().map { it.optString("path") }
-        return type !in setOf("DEMO", "DLC") && "games/demo" !in categories && "addons" !in categories &&
-            (type in setOf("BASE_GAME", "EDITION", "BUNDLE") || categories.any { it in gameCategories }) &&
+        return (type in setOf("BASE_GAME", "EDITION", "BUNDLE", "DLC", "ADD_ON", "DEMO") || categories.any { it in gameCategories }) &&
             !item.optBoolean("isCodeRedemptionOnly") && !item.optBoolean("prePurchase") && allowedCountry(item, country)
     }
 
@@ -246,7 +258,10 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
     private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else List(length()) { getJSONObject(it) }
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else List(length()) { getString(it) }
+    private fun weeklyOffer(offer: EpicOffer) = StoreOffer(offer.id, offer.title, offer.url, offer.start, offer.end, offer.imageUrl,
+        originalPrice = offer.originalPrice, currency = offer.currency, priceText = offer.priceText,
+        genres = offer.genres, platforms = offer.platforms, contentType = offer.contentType)
     private companion object {
-        val gameCategories = setOf("games/edition/base", "games/edition", "bundles/games")
+        val gameCategories = setOf("games/edition/base", "games/edition", "bundles/games", "addons", "games/demo")
     }
 }
