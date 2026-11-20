@@ -4,12 +4,14 @@
 
 Приложение ищет временные раздачи игр для ПК в Steam, Epic Games Store и GOG. Для каждой раздачи есть ссылка на страницу магазина и срок окончания, если он известен. Поддерживаются Android 8.0 и новее, русский и английский языки.
 
-[Скачать APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v0.4.0-beta1/Free-Games-Watcher-Android-0.4.0-beta1.apk) · [Релиз 0.4.0-beta1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v0.4.0-beta1) · [Добавить в Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Grim1313/Free-Games-Watcher-Android)
+[Скачать APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v0.4.0-beta1/Free-Games-Watcher-Android-0.4.0-beta1.apk) · [Релиз 0.4.0-beta1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v0.4.0-beta1)
+
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22bz.fgw.android%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FGrim1313%2FFree-Games-Watcher-Android%22%2C%22author%22%3A%22Grim1313%22%2C%22name%22%3A%22Free%20Games%20Watcher%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Atrue%7D%22%7D"><img src="docs/assets/badge_obtainium.png" width="161" height="48" alt="Добавить Free Games Watcher в Obtainium"></a>
 
 ## Установка и обновления
 
 - **Прямая установка.** Откройте APK на телефоне и по запросу Android разрешите браузеру или файловому менеджеру устанавливать приложения из этого источника.
-- **Obtainium.** Добавьте ссылку на этот репозиторий как источник GitHub. Включите **Include prereleases** («Включать предварительные выпуски»), чтобы получать бета-версии. Для прямой установки и Obtainium используется один APK.
+- **Obtainium.** Нажмите на бейдж выше и подтвердите импорт, чтобы получать бета-версии.
 
 Пакет — `bz.fgw.android`. SHA-256 сертификата публичных выпусков — `9c72573f906e65ed68ff8602f39a11ba800bd574a3512ae1625e9aa16b6c4938`. Контрольная сумма конкретного APK прилагается к выпуску.
 

@@ -4,12 +4,14 @@
 
 Free Games Watcher finds limited-time PC game giveaways on Steam, the Epic Games Store and GOG. Each offer shows the deadline when available and links to the store page where you can claim the game. The app runs on Android 8.0 or later and supports English and Russian.
 
-[Download the APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v0.4.0-beta1/Free-Games-Watcher-Android-0.4.0-beta1.apk) · [Release notes for 0.4.0-beta1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v0.4.0-beta1) · [Add to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Grim1313/Free-Games-Watcher-Android)
+[Download the APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v0.4.0-beta1/Free-Games-Watcher-Android-0.4.0-beta1.apk) · [Release notes for 0.4.0-beta1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v0.4.0-beta1)
+
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22bz.fgw.android%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FGrim1313%2FFree-Games-Watcher-Android%22%2C%22author%22%3A%22Grim1313%22%2C%22name%22%3A%22Free%20Games%20Watcher%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Atrue%7D%22%7D"><img src="docs/assets/badge_obtainium.png" width="161" height="48" alt="Get it on Obtainium"></a>
 
 ## Installation and updates
 
 - **Direct download.** Open the APK on your phone. If Android prompts you, allow your browser or file manager to install apps from this source.
-- **Obtainium.** Add this GitHub repository as a source and enable **Include prereleases** to receive beta versions. Obtainium installs the same APK as the direct download.
+- **Obtainium.** Tap the badge above and confirm the import to track beta releases.
 
 The package name is `bz.fgw.android`. The SHA-256 fingerprint of the release signing certificate is `9c72573f906e65ed68ff8602f39a11ba800bd574a3512ae1625e9aa16b6c4938`. Each release includes a SHA-256 checksum for its APK.
 
