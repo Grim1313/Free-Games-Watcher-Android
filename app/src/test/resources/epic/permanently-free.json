@@ -1,0 +1,57 @@
+{
+  "data": {
+    "Catalog": {
+      "searchStore": {
+        "elements": [
+          {
+            "id": "permanent",
+            "namespace": "test-namespace",
+            "title": "Test game",
+            "offerType": "BASE_GAME",
+            "catalogNs": {
+              "mappings": [
+                {
+                  "pageType": "productHome",
+                  "pageSlug": "test-game"
+                }
+              ]
+            },
+            "keyImages": [
+              {
+                "type": "OfferImageWide",
+                "url": "https://cdn1.epicgames.com/test.png"
+              }
+            ],
+            "price": {
+              "totalPrice": {
+                "originalPrice": 0,
+                "discountPrice": 0,
+                "currencyCode": "USD",
+                "fmtPrice": {
+                  "originalPrice": "$19.99"
+                }
+              }
+            },
+            "promotions": {
+              "promotionalOffers": [
+                {
+                  "promotionalOffers": [
+                    {
+                      "startDate": "2026-11-18T12:00:00.000Z",
+                      "endDate": "2026-11-20T12:00:00.000Z",
+                      "discountSetting": {
+                        "discountType": "PERCENTAGE",
+                        "discountPercentage": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "upcomingPromotionalOffers": []
+            }
+          }
+        ]
+      }
+    }
+  }
+}
