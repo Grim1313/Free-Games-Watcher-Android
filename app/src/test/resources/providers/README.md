@@ -15,8 +15,6 @@ promotions and zero-price catalog records without giveaway terms produce no
 active cards. Transport tests cover fallback, partial second-page failure and
 Retry-After. Live responses are kept outside the repository.
 
-On 2026-11-19, fixture results and live EGData US/RU results were compared with
-the extension parser. Offer IDs, addresses and expiration times matched.
 EGData now redirects POST searches with HTTP 303 to the canonical GET endpoint.
 The Android fallback uses that GET endpoint directly with explicit country,
 page, limit, onSale and price ordering parameters.

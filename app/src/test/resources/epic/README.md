@@ -6,4 +6,4 @@ The extension parser `src/lib/providers/epicProvider.js`, `parseEpicFeed`, retur
 
 `permanently-free.json` changes the first offer's original price to zero. Both parsers return zero current offers with `complete=true`. The Android test is `permanentlyFreeNegativeExampleMatchesExtension`.
 
-Parity was executed against the local extension source on 2026-11-19. Other JVM tests cover expired and demo offers, country restrictions, incomplete records, duplicate windows, and unsafe product URLs.
+Other JVM tests cover expired and demo offers, country restrictions, incomplete records, duplicate windows, and unsafe product URLs.

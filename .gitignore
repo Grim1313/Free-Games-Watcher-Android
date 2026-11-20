@@ -9,3 +9,7 @@ captures/
 *.keystore
 *.p12
 *.dpapi
+
+# Local development plans and validation reports
+/docs/PLAN*.md
+/docs/TESTING-AND-RELEASE*.md
