@@ -41,14 +41,14 @@ import java.time.format.DateTimeFormatter
 fun FgwTheme(theme: String = "system", content: @Composable () -> Unit) {
     val dark = when (theme) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
     val colors = if (dark) darkColorScheme(
-        primary = Color(0xFFC0E899), onPrimary = Color(0xFF182713),
+        primary = Color(0xFFC0E899), secondary = Color(0xFFB7D3B1), onPrimary = Color(0xFF182713),
         background = Color.Black, onBackground = Color(0xFFF1F3EF),
         surface = Color.Black, onSurface = Color(0xFFF1F3EF),
         onSurfaceVariant = Color(0xFFB0BAB2), surfaceVariant = Color(0xFF151A17),
         secondaryContainer = Color(0xFF25371D), onSecondaryContainer = Color(0xFFC6EF92),
         outline = Color(0xFF7E8B80), outlineVariant = Color(0xFF2C322E),
     ) else lightColorScheme(
-        primary = Color(0xFF245C42), onPrimary = Color.White,
+        primary = Color(0xFF245C42), secondary = Color(0xFF425C49), onPrimary = Color.White,
         background = Color(0xFFF6F8F3), onBackground = Color(0xFF18221D),
         surface = Color.White, onSurface = Color(0xFF18221D),
         onSurfaceVariant = Color(0xFF49594E), surfaceVariant = Color(0xFFE9EEE6),
@@ -181,9 +181,9 @@ fun FeedScreen(
                                     Modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
                                     style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
                                 if (tab == "history") HistorySelector(historyFilter, text) { historyFilter = it }
-                                IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { AppIcon("search", text.choose("Поиск", "Search")) }
+                                IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { AppIcon("search", label = text.choose("Поиск", "Search")) }
                                 IconButton(onClick = model::refresh, enabled = !refreshing && state.selectedStores.isNotEmpty() && state.settings.trackFreeToKeep) {
-                                    if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else AppIcon("refresh", text.refresh)
+                                    if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else AppIcon("refresh", label = text.refresh)
                                 }
                             }
                             if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -342,7 +342,7 @@ private fun OfferStoreButton(offer: StoredOffer, text: UiText, now: Long, open: 
         Button(onClick = open, contentPadding = PaddingValues(horizontal = 10.dp), modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(8.dp)) {
             Text(text.choose("В магазин", "Store"), style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.width(4.dp))
-            AppIcon("arrow", text.openStore, Modifier.size(16.dp))
+            AppIcon("arrow", Modifier.size(16.dp))
         }
     }
 }
@@ -351,7 +351,7 @@ private fun OfferStoreButton(offer: StoredOffer, text: UiText, now: Long, open: 
 private fun MarkActions(offer: StoredOffer, mark: PersonalMark?, text: UiText, action: (StoredOffer, String) -> Unit) {
     Row {
         listOf((if (mark?.claimed == true) "unclaim" else "claim") to "check", "snooze" to "clock", "hide" to "hide", "ignore" to "ignore").forEach { (key, icon) ->
-            IconButton(onClick = { action(offer, key) }, modifier = Modifier.size(48.dp)) { AppIcon(icon, actionLabel(key, text)) }
+            IconButton(onClick = { action(offer, key) }, modifier = Modifier.size(48.dp)) { AppIcon(icon, label = actionLabel(key, text)) }
         }
     }
 }
@@ -362,7 +362,7 @@ private fun OfferDetails(offer: StoredOffer, text: UiText, now: Long, mark: Pers
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = back) { AppIcon("back", text.back) }
+            IconButton(onClick = back) { AppIcon("back", label = text.back) }
             Text(storeName(offer.store), style = MaterialTheme.typography.titleMedium)
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -468,7 +468,7 @@ private fun HistorySelector(selected: String, text: UiText, select: (String) -> 
         IconButton(onClick = { expanded = true }, colors = IconButtonDefaults.iconButtonColors(
             contentColor = if (selected == "all") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
         )) {
-            AppIcon("filter", text.choose("Фильтр истории · ", "History filter · ") + (choices.find { it.first == selected }?.second ?: choices.first().second))
+            AppIcon("filter", label = text.choose("Фильтр истории · ", "History filter · ") + (choices.find { it.first == selected }?.second ?: choices.first().second))
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
             choices.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; select(key) }) }

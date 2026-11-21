@@ -95,7 +95,7 @@ internal fun SettingsScreen(
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (page != null) IconButton(onClick = { page = if (page == "country") "catalog" else null }) {
-                AppIcon("back", text.back)
+                AppIcon("back", label = text.back)
             }
             Text(
                 if (page == "country") text.choose("Страна каталога", "Catalog country")
@@ -114,9 +114,13 @@ internal fun SettingsScreen(
                 item {
                     OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                         label = { Text(text.choose("Поиск настроек", "Search settings")) },
-                        leadingIcon = { AppIcon("search", null) })
+                        leadingIcon = { AppIcon("search") })
                 }
-                items(destinations.filter { it.title.contains(search, true) || it.description.contains(search, true) }, key = { it.id }) { destination ->
+                val matches = destinations.filter { it.matches(search) }
+                if (matches.isEmpty()) item {
+                    Text(text.choose("Настройки не найдены", "No matching settings"), modifier = Modifier.padding(vertical = 8.dp))
+                }
+                items(matches, key = { it.id }) { destination ->
                     SettingsLink(destination) { page = destination.id }
                 }
                 if (destinations.none { it.title.contains(search, true) || it.description.contains(search, true) }) item {

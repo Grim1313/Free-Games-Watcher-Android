@@ -15,33 +15,49 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-internal data class SettingsDestination(val id: String, val title: String, val description: String, val icon: String)
+internal data class SettingsDestination(val id: String, val title: String, val description: String, val icon: String, val keywords: String = "") {
+    fun matches(query: String): Boolean {
+        val searchable = "$title $description $keywords"
+        return query.trim().split(' ').all { searchable.contains(it, ignoreCase = true) }
+    }
+}
 
 internal fun settingsDestinations(text: UiText, version: String) = listOf(
-    SettingsDestination("catalog", text.choose("Магазины и регион", "Stores and region"), text.choose("Steam, Epic, GOG · страна · отслеживание", "Steam, Epic, GOG · country · tracking"), "gift"),
-    SettingsDestination("filters", text.choose("Фильтры раздач", "Giveaway filters"), text.choose("Типы · рейтинг · отзывы · жанры · платформы · исключения", "Types · ratings · reviews · genres · platforms · exclusions"), "filter"),
-    SettingsDestination("display", text.choose("Вид и язык", "Appearance and language"), text.choose("Тема · компактный вид · сортировка · счётчик", "Theme · compact view · sorting · count"), "settings"),
-    SettingsDestination("background", text.choose("Фоновая проверка", "Background checks"), text.choose("Интервал проверки магазинов", "Store check interval"), "refresh"),
-    SettingsDestination("notifications", text.choose("Оповещения", "Notifications"), text.choose("Новые раздачи · напоминания · тихие часы", "New giveaways · reminders · quiet hours"), "clock"),
-    SettingsDestination("history", text.history, text.choose("Срок хранения · очистка", "Retention · clear history"), "history"),
-    SettingsDestination("marks", text.choose("Личные отметки", "Personal marks"), text.choose("Забранные · отложенные · скрытые · игнорируемые", "Claimed · snoozed · hidden · ignored"), "check"),
-    SettingsDestination("backup", text.choose("Перенос данных", "Data transfer"), text.choose("Импорт и экспорт · браузерное расширение", "Import and export · browser extension"), "arrow"),
+    SettingsDestination("catalog", text.choose("Магазины и регион", "Stores and region"), text.choose("Steam, Epic, GOG · страна · отслеживание", "Steam, Epic, GOG · country · tracking"), "gift",
+        text.choose("Пауза возобновить проверку регион", "pause resume region")),
+    SettingsDestination("filters", text.choose("Фильтры раздач", "Giveaway filters"), text.choose("Типы · рейтинг · отзывы · жанры · платформы · исключения", "Types · ratings · reviews · genres · platforms · exclusions"), "filter",
+        text.choose("DLC демоверсии демо саундтреки инструменты программы наборы Steam ID ключевые слова название минимум положительных без отзывов Windows macOS Linux", "DLC demos soundtracks tools packages Steam ID blocked keywords title minimum positive unrated Windows macOS Linux")),
+    SettingsDestination("display", text.choose("Вид и язык", "Appearance and language"), text.choose("Тема · компактный вид · сортировка · счётчик", "Theme · compact view · sorting · count"), "settings",
+        text.choose("OLED светлая тёмная черная чёрная системная обложки русский English прочитано прочитанными", "OLED black dark light system covers English Russian mark all as read")),
+    SettingsDestination("background", text.choose("Фоновая проверка", "Background checks"), text.choose("Интервал проверки магазинов", "Store check interval"), "refresh",
+        text.choose("частота расписание минуты часы", "frequency schedule minutes hours")),
+    SettingsDestination("notifications", text.choose("Оповещения", "Notifications"), text.choose("Новые раздачи · напоминания · тихие часы", "New giveaways · reminders · quiet hours"), "clock",
+        text.choose("уведомления повтор оповещение срок окончания тест канал разрешение", "notifications repeat alerts expiry deadline test permission channel")),
+    SettingsDestination("history", text.history, text.choose("Срок хранения · очистка", "Retention · clear history"), "history",
+        text.choose("дни сохранять удалить историю", "days keep delete")),
+    SettingsDestination("marks", text.choose("Личные отметки", "Personal marks"), text.choose("Забранные · отложенные · скрытые · игнорируемые", "Claimed · snoozed · hidden · ignored"), "check",
+        text.choose("уже забрал отложить скрыть игнорировать снять восстановить", "already claimed snooze hide ignore restore clear")),
+    SettingsDestination("backup", text.choose("Перенос данных", "Data transfer"), text.choose("Импорт и экспорт · браузерное расширение", "Import and export · browser extension"), "arrow",
+        text.choose("резервная копия бэкап JSON восстановить", "backup JSON restore")),
     SettingsDestination("help", text.choose("Справка", "Help"), text.choose("Начало работы · значки · действия", "Getting started · icons · actions"), "help"),
-    SettingsDestination("diagnostics", text.choose("Диагностика источников", "Source diagnostics"), text.choose("Последние проверки · ошибки · отчёт", "Recent checks · errors · report"), "refresh"),
-    SettingsDestination("privacy", text.choose("Данные и приватность", "Data and privacy"), text.choose("Хранение и обращения к сервисам", "Storage and service requests"), "info"),
-    SettingsDestination("about", text.choose("О приложении", "About"), "Free Games Watcher · $version", "info"),
+    SettingsDestination("diagnostics", text.choose("Диагностика источников", "Source diagnostics"), text.choose("Последние проверки · ошибки · отчёт", "Recent checks · errors · report"), "refresh",
+        text.choose("состояние источник запросы скопировать", "status requests copy report")),
+    SettingsDestination("privacy", text.choose("Данные и приватность", "Data and privacy"), text.choose("Хранение и обращения к сервисам", "Storage and service requests"), "info",
+        text.choose("конфиденциальность EGData", "privacy EGData")),
+    SettingsDestination("about", text.choose("О приложении", "About"), "Free Games Watcher · $version", "info",
+        text.choose("версия обновления GitHub сайт сброс", "version updates GitHub website reset")),
 )
 
 @Composable
 internal fun SettingsLink(destination: SettingsDestination, open: () -> Unit) {
     Surface(onClick = open, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(destination.icon, null, Modifier.size(24.dp))
+            AppIcon(destination.icon, Modifier.size(24.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(destination.title, style = MaterialTheme.typography.titleMedium)
                 Text(destination.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            AppIcon("chevron", null, Modifier.size(20.dp))
+            AppIcon("chevron", Modifier.size(20.dp))
         }
     }
 }

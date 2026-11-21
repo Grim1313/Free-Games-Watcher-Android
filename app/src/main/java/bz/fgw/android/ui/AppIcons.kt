@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun AppIcon(name: String, label: String? = null, modifier: Modifier = Modifier) {
+internal fun AppIcon(name: String, modifier: Modifier = Modifier, label: String? = null) {
     val vector = remember(name) {
         val path = when (name) {
             "back" -> "M19 12H5 M12 5L5 12L12 19"
