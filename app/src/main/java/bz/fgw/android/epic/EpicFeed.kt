@@ -163,9 +163,7 @@ class EpicFeed(
                 ?.optString("pageSlug").takeUnless { it.isNullOrEmpty() }
             ?: item.optString("productSlug")
         val url = requireNotNull(StoreLinks.fromSlug(slug)) { "Missing safe product link" }
-        val images = item.optJSONArray("keyImages").objects()
-        val image = (images.firstOrNull { it.optString("type") == "OfferImageWide" }
-            ?: images.firstOrNull { it.optString("type") == "Thumbnail" })?.optString("url")?.takeIf { it.isNotBlank() }
+        val image = EpicMetadata.image(item)
         val window = active ?: requireNotNull(future)
         return EpicOffer("epic:$namespace:$id", title.take(300), url, window.first, window.second, image,
             originalPrice = original.toLong(), currency = price.optString("currencyCode").takeIf { it.matches(Regex("[A-Z]{3}")) },

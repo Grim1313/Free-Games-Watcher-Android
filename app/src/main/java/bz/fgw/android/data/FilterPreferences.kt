@@ -89,6 +89,11 @@ data class FilterPreferences(
 fun sortOffers(offers: List<StoredOffer>, sort: String): List<StoredOffer> = when (sort) {
     "title" -> offers.sortedBy { it.title.lowercase(Locale.ROOT) }
     "newest" -> offers.sortedByDescending { it.firstSeen }
-    "rating" -> offers.sortedWith(compareByDescending<StoredOffer> { it.ratingPercent?.toDouble() ?: it.ratingValue?.times(20) ?: -1.0 }.thenBy { it.title.lowercase(Locale.ROOT) })
+    "rating" -> offers.groupBy { it.store }.values.flatMap { group ->
+        if (group.first().store == "steam") group.sortedWith(
+            compareByDescending<StoredOffer> { it.ratingPercent ?: -1 }.thenByDescending { it.reviewCount ?: 0 }
+                .thenBy { it.title.lowercase(Locale.ROOT) },
+        ) else sortOffers(group, "ending")
+    }
     else -> offers.sortedWith(compareBy<StoredOffer> { it.end ?: Long.MAX_VALUE }.thenBy { it.title.lowercase(Locale.ROOT) })
 }

@@ -196,6 +196,25 @@ class EpicGogProviderTest {
         assertTrue(result.successful)
     }
 
+    @Test fun optionalScreenshotsUseStoreHostsAndRetainCoverFallback() {
+        val item = fixture("epic-mafia-hotel.json")
+        val originalEpic = epic.parseCatalog(catalog(item), "US", now).offers.single().imageUrl
+        val epicScreenshot = "https://cdn1.epicgames.com/game/screenshot.jpg"
+        val images = item.getJSONArray("keyImages")
+        images.put(JSONObject().put("type", "Screenshot").put("url", "https://example.com/untrusted.jpg"))
+        assertEquals(originalEpic, epic.parseCatalog(catalog(item), "US", now).offers.single().imageUrl)
+        images.put(JSONObject().put("type", "Screenshot").put("url", epicScreenshot))
+        assertEquals(epicScreenshot, epic.parseCatalog(catalog(item), "US", now).offers.single().imageUrl)
+
+        val section = fixture("gog-a-new-beginning.json").getJSONObject("section")
+        val product = section.getJSONObject("properties").getJSONObject("product")
+        val gogScreenshot = "https://images.gog-statics.com/screenshot.jpg"
+        product.put("screenshots", JSONArray().put("https://example.com/untrusted.jpg"))
+        assertEquals(product.getString("coverHorizontal"), GogProvider().parseGiveaway(section, now).offers.single().imageUrl)
+        product.getJSONArray("screenshots").put(JSONObject().put("thumbnail", gogScreenshot))
+        assertEquals(gogScreenshot, GogProvider().parseGiveaway(section, now).offers.single().imageUrl)
+    }
+
     @Test fun conditionalGogSectionIsSkippedWithoutLoadingIt() {
         val root = fixture("gog-a-new-beginning.json")
         root.getJSONObject("page").getJSONArray("sections").getJSONObject(0).put("isPersonalized", true)
@@ -214,6 +233,9 @@ class EpicGogProviderTest {
         val expired = GogProvider().parseGiveaway(root, now + 20 * 86_400_000L)
         assertEquals(setOf("gog:1207659150"), expired.ended)
         root.getJSONObject("properties").put("startDate", "2026-11-01T00:00:00Z")
-        assertTrue(GogProvider().parseGiveaway(root, now).offers.isEmpty())
+        val upcoming = GogProvider().parseGiveaway(root, now)
+        assertTrue(upcoming.offers.isEmpty())
+        assertEquals("gog:1207659150", upcoming.upcoming.single().id)
+        assertEquals(Instant.parse("2026-11-01T00:00:00Z").toEpochMilli(), upcoming.upcoming.single().start)
     }
 }

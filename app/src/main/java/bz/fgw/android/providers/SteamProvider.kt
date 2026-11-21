@@ -231,12 +231,18 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
             val id = offer.id.substringAfter(':')
             var enriched = offer
             try {
-                val payload = json("https://$STORE_HOST/api/appdetails?appids=$id&cc=$region&l=english&filters=basic,price_overview,genres,platforms").optJSONObject(id)
+                val payload = json("https://$STORE_HOST/api/appdetails?appids=$id&cc=$region&l=english&filters=basic,screenshots,price_overview,genres,platforms").optJSONObject(id)
                 val data = payload?.takeIf { it.optBoolean("success") }?.optJSONObject("data")
                 if (data != null) {
                     val price = data.optJSONObject("price_overview")
                     val genres = data.optJSONArray("genres")
                     val platforms = data.optJSONObject("platforms")
+                    val screenshots = data.optJSONArray("screenshots")
+                    val screenshot = screenshots?.let { images ->
+                        (0 until images.length()).firstNotNullOfOrNull { index ->
+                            images.optJSONObject(index)?.optString("path_thumbnail")?.takeIf { StoreUrls.isCover("steam", it) }
+                        }
+                    }
                     val type = when (data.optString("type")) {
                         "dlc" -> "dlc"; "demo" -> "demo"; "music" -> "soundtrack"
                         "application", "tool", "software" -> "tool"; else -> enriched.contentType
@@ -245,7 +251,7 @@ class SteamProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProv
                         originalPrice = price?.optLong("initial")?.takeIf { it > 0 } ?: enriched.originalPrice,
                         currency = price?.optString("currency")?.takeIf { it.matches(Regex("[A-Z]{3}")) } ?: enriched.currency,
                         priceText = price?.optString("initial_formatted")?.takeIf { it.isNotBlank() } ?: enriched.priceText,
-                        imageUrl = data.optString("header_image").takeIf { StoreUrls.isCover("steam", it) } ?: enriched.imageUrl,
+                        imageUrl = screenshot ?: data.optString("header_image").takeIf { StoreUrls.isCover("steam", it) } ?: enriched.imageUrl,
                         genres = if (genres == null) enriched.genres else (0 until genres.length())
                             .mapNotNull { genres.optJSONObject(it)?.optString("description")?.takeIf(String::isNotBlank) }.distinct(),
                         platforms = if (platforms == null) enriched.platforms else listOf("windows", "mac", "linux").filter { platforms.optBoolean(it) },

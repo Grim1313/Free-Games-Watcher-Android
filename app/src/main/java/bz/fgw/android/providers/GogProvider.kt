@@ -15,6 +15,7 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         val query = "countryCode=$region&locale=en-US&currencyCode=USD"
         val warnings = mutableListOf<String>()
         val offers = linkedMapOf<String, StoreOffer>()
+        val upcoming = linkedMapOf<String, StoreOffer>()
         val ended = mutableSetOf<String>()
         var requests = 0
         var retryAfter: Long? = null
@@ -50,6 +51,7 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
                     require(sectionId.matches(Regex("[a-zA-Z0-9-]{1,100}"))) { "Invalid section identifier" }
                     val result = parseGiveaway(request("https://sections.gog.com/v1/pages/2f/sections/$sectionId?$query"), now)
                     for (offer in result.offers) offers[offer.id] = offer
+                    for (offer in result.upcoming) upcoming[offer.id] = offer
                     ended += result.ended
                 } catch (error: Exception) { warnings += "section: ${error.message}" }
             }
@@ -66,7 +68,7 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         val details = "homepage=${if (pageValid) "ok" else "failed"}, catalog=${if (catalogValid) candidates else "failed"}" +
             if (warnings.isEmpty()) "" else "; ${warnings.joinToString("; ")}"
         return StoreResult(offers.values.toList(), warnings.isEmpty(), ended - offers.keys,
-            requests, details, retryAfter, pageValid || catalogValid)
+            requests, details, retryAfter, pageValid || catalogValid, upcoming.values.filter { it.id !in offers })
     }
 
     fun parseGiveaway(root: JSONObject, now: Long): StoreResult {
@@ -84,7 +86,6 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         val demo = tags != null && (0 until tags.length()).any { tags.getJSONObject(it).optString("slug") == "demo" }
         if (type !in setOf("game", "pack", "dlc")) return StoreResult(emptyList())
         if (end <= now) return StoreResult(emptyList(), ended = setOf("gog:$id"))
-        if (start != null && start > now) return StoreResult(emptyList())
         val price = product.optJSONObject("price")
         val money = price?.optJSONObject("baseMoney")
         val currency = money?.optString("currency")?.takeIf { it.matches(Regex("[A-Z]{3}")) }
@@ -94,8 +95,17 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         }.getOrNull()
         val genres = product.optJSONArray("genres")
         val platforms = product.optJSONArray("operatingSystems")
-        return StoreResult(listOf(StoreOffer("gog:$id", title.take(300), "https://www.gog.com/en/", start, end,
-            product.optString("coverHorizontal").takeIf { StoreUrls.isCover("gog", it) },
+        val screenshots = product.optJSONArray("screenshots")
+        val screenshot = screenshots?.let { images ->
+            (0 until images.length()).firstNotNullOfOrNull { index ->
+                val value = images.opt(index)
+                val url = if (value is JSONObject) value.optString("thumbnail").ifEmpty { value.optString("url") }
+                    else value as? String
+                url?.takeIf { StoreUrls.isCover("gog", it) }
+            }
+        }
+        val offer = StoreOffer("gog:$id", title.take(300), "https://www.gog.com/en/", start, end,
+            screenshot ?: product.optString("coverHorizontal").takeIf { StoreUrls.isCover("gog", it) },
             originalPrice = amount, currency = currency,
             priceText = price?.optString("base")?.takeIf { amount != null && it.isNotBlank() },
             ratingValue = product.optDouble("reviewsRating", Double.NaN).takeIf { it > 0 && it <= 50 && product.optInt("reviewsCount") > 0 }?.div(10),
@@ -107,6 +117,8 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
                 platforms.optString(it).let { platform -> if (platform == "osx") "mac" else platform }
             }.filter { it in setOf("windows", "mac", "linux") }.distinct(),
             contentType = when { demo -> "demo"; type == "pack" -> "package"; type == "dlc" -> "dlc"; else -> "game" },
-        )))
+        )
+        return if (start != null && start > now) StoreResult(emptyList(), upcoming = listOf(offer))
+            else StoreResult(listOf(offer))
     }
 }

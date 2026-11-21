@@ -9,6 +9,7 @@ import bz.fgw.android.data.exportBackup
 import bz.fgw.android.data.importBackup
 import bz.fgw.android.data.FeedState
 import bz.fgw.android.data.StoredOffer
+import bz.fgw.android.data.MarkUndo
 import bz.fgw.android.watchRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +56,10 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     fun setFilters(filters: FilterPreferences) = save { repository.setFilters(filters) }
     fun setSort(sort: String) = save { repository.setSort(sort) }
     fun setCompact(compact: Boolean) = save { repository.setCompact(compact) }
+    fun setTheme(theme: String) = save { repository.setTheme(theme) }
     fun act(offer: StoredOffer, action: String) = save { repository.act(offer, action) }
+    suspend fun performAction(offer: StoredOffer, action: String): MarkUndo? = repository.act(offer, action)
+    suspend fun undoAction(offer: StoredOffer, undo: MarkUndo?) = repository.undoAction(offer, undo)
     fun restoreMark(key: String) = save { repository.restoreMark(key) }
     fun clearHistory() = save { repository.clearHistory() }
     fun clearMarks() = save { repository.clearMarks() }

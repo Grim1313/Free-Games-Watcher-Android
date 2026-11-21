@@ -16,11 +16,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bz.fgw.android.data.StoredOffer
@@ -53,6 +56,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val state by model.state.collectAsStateWithLifecycle()
+            val dark = when (state.settings.theme) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
             val text = UiText(state.language)
             val alert = when (alertKey) {
                 "permission" -> text.permissionDenied
@@ -62,7 +72,7 @@ class MainActivity : ComponentActivity() {
                 "browser" -> text.noBrowser
                 else -> null
             }
-            FgwTheme {
+            FgwTheme(state.settings.theme) {
                 FeedScreen(
                     model = model,
                     notificationsAvailable = systemNotificationsEnabled,
@@ -127,15 +137,15 @@ class MainActivity : ComponentActivity() {
         when {
             offer == null -> alertKey = "missing"
             offer.country != state.country -> alertKey = "region"
-            else -> openOffer(offer)
+            offer.ended || (offer.end != null && offer.end <= System.currentTimeMillis()) -> notificationOffer = offer
+            else -> {
+                model.act(offer, "read")
+                openOffer(offer)
+            }
         }
     }
 
     private fun openOffer(offer: StoredOffer) {
-        if (offer.ended || (offer.end != null && offer.end <= System.currentTimeMillis())) {
-            notificationOffer = offer
-            return
-        }
         if (!StoreUrls.isSafe(offer.store, offer.url)) {
             alertKey = "unsafe"
             return

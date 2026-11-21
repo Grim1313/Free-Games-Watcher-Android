@@ -16,7 +16,7 @@ fun OfferCover(store: String, url: String?, modifier: Modifier = Modifier) {
     if (url == null || !StoreUrls.isCover(store, url)) return
     var failed by remember(url) { mutableStateOf(false) }
     if (!failed) AsyncImage(
-        model = url, contentDescription = null, modifier = modifier.aspectRatio(2.15f),
+        model = url, contentDescription = null, modifier = modifier.aspectRatio(16f / 9f),
         contentScale = ContentScale.Crop,
         onError = { failed = true },
     )

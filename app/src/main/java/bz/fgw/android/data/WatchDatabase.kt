@@ -29,6 +29,7 @@ data class WatchSettings(
     val historyRetentionDays: Int = 30,
     val notifiedRetentionDays: Int = 14,
     val renotifyAfterRetention: Boolean = true,
+    val theme: String = "system",
 ) {
     val displayLanguage: String get() = if (language == "auto") {
         if (java.util.Locale.getDefault().language == "ru") "ru" else "en"
@@ -216,7 +217,7 @@ interface WatchDao {
 @ColumnTypeConverters(StringListConverter::class)
 @Database(
     entities = [WatchSettings::class, StoredOffer::class, CheckStatus::class, NotificationEvent::class, PersonalMark::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class WatchDatabase : RoomDatabase() {
@@ -270,4 +271,8 @@ val MIGRATION_2_3 = Migration(2, 3) { db ->
         1, 0, '', 0, claimedAt, 0 FROM claims""")
     db.execSQL("DROP TABLE claims")
     db.execSQL("ALTER TABLE notification_events ADD COLUMN deliveredAt INTEGER NOT NULL DEFAULT 0")
+}
+
+val MIGRATION_3_4 = Migration(3, 4) { db ->
+    db.execSQL("ALTER TABLE settings ADD COLUMN theme TEXT NOT NULL DEFAULT 'system'")
 }

@@ -143,6 +143,25 @@ class SteamProviderTest {
         assertFalse(http.urls.any { "appreviews" in it })
     }
 
+    @Test fun screenshotPreviewUsesTrustedImageAndFallsBackToHeader() {
+        val screenshot = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42/ss_test.600x338.jpg"
+        val header = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42/header.jpg"
+        val data = JSONObject().put("header_image", header).put("screenshots", JSONArray()
+            .put(JSONObject().put("path_thumbnail", "https://example.com/untrusted.jpg"))
+            .put(JSONObject().put("path_thumbnail", screenshot)))
+        val http = Fake().apply {
+            items = listOf(item(42, keep))
+            details = JSONObject().put("42", JSONObject().put("success", true).put("data", data)).toString()
+        }
+        val known = listOf(StoreOffer("app:42", "Game", "https://store.steampowered.com/app/42/"))
+        assertEquals(screenshot, SteamProvider(http).fetch("US", known, now).offers.single().imageUrl)
+        assertEquals(1, http.urls.count { "appdetails" in it })
+        assertTrue(http.urls.single { "appdetails" in it }.contains("screenshots"))
+        data.put("screenshots", JSONArray().put(JSONObject().put("path_thumbnail", "https://example.com/untrusted.jpg")))
+        http.details = JSONObject().put("42", JSONObject().put("success", true).put("data", data)).toString()
+        assertEquals(header, SteamProvider(http).fetch("US", known, now).offers.single().imageUrl)
+    }
+
     @Test fun storeBrowseSuppliesReviewsWhenReviewEndpointIsUnavailable() {
         val http = Fake().apply {
             items = listOf(item(42, keep)

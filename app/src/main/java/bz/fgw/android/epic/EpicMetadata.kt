@@ -2,6 +2,7 @@
 package bz.fgw.android.epic
 
 import org.json.JSONObject
+import bz.fgw.android.providers.StoreUrls
 
 /** Shared tag IDs from the extension's Epic metadata map. Unknown tags remain unknown. */
 object EpicMetadata {
@@ -20,6 +21,14 @@ object EpicMetadata {
 
     fun genres(item: JSONObject): List<String> = tags(item).mapNotNull(genres::get).distinct()
     fun platforms(item: JSONObject): List<String> = tags(item).mapNotNull(platforms::get).distinct()
+    fun image(item: JSONObject): String? {
+        val images = item.optJSONArray("keyImages") ?: return null
+        val valid = (0 until images.length()).mapNotNull { images.optJSONObject(it) }
+            .filter { StoreUrls.isCover("epic", it.optString("url")) }
+        return (valid.firstOrNull { it.optString("type").startsWith("Screenshot", ignoreCase = true) }
+            ?: valid.firstOrNull { it.optString("type") == "OfferImageWide" }
+            ?: valid.firstOrNull { it.optString("type") == "Thumbnail" })?.optString("url")
+    }
     fun contentType(item: JSONObject): String = when (item.optString("offerType")) {
         "DLC", "ADD_ON" -> "dlc"
         "DEMO" -> "demo"

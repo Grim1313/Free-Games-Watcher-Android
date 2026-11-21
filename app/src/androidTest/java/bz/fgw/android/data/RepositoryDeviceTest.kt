@@ -117,7 +117,9 @@ class RepositoryDeviceTest {
         awaitNotifications(1)
         assertEquals(firstTag, awaitNotifications(1).single().tag)
         assertEquals(end, repository.findOffer(firstTag)?.end)
-        assertNotNull(awaitNotifications(1).single().notification.contentIntent)
+        val notification = awaitNotifications(1).single().notification
+        assertNotNull(notification.contentIntent)
+        assertNotNull(notification.actions.single().actionIntent)
     }
 
     @Test
@@ -554,6 +556,98 @@ class RepositoryDeviceTest {
     }
 
     @Test
+    fun undoRestoresExistingMarksAndThemeSurvivesSettingsChanges() = runBlocking {
+        val repository = repository({ StoreResult(listOf(offer())) })
+        repository.refresh()
+        val active = repository.state.first().offers.single()
+        repository.setTheme("dark")
+        repository.setSort("title")
+        assertEquals("dark", repository.state.first().settings.theme)
+        val snoozeUndo = repository.act(active, "snooze")!!
+        assertNull(snoozeUndo.previous)
+        val snoozed = database.watchDao().mark(active.gameKey)
+        val previous = repository.act(active, "claim")
+        assertEquals(snoozed, previous!!.previous)
+        assertTrue(repository.undoAction(active, previous))
+        assertEquals(snoozed, database.watchDao().mark(active.gameKey))
+        assertFalse(repository.undoAction(active, previous))
+        val restoreUndo = repository.act(active, "restore")!!
+        assertTrue(repository.undoAction(active, restoreUndo))
+        assertEquals(snoozed, database.watchDao().mark(active.gameKey))
+        repository.clearMarks()
+        val claimUndo = repository.act(active, "claim")!!
+        assertTrue(repository.undoAction(active, claimUndo))
+        assertNull(database.watchDao().mark(active.gameKey))
+    }
+
+    @Test
+    fun staleUndoPreservesLaterActionsClearsImportsAndSnoozeUpdates() = runBlocking {
+        val repository = repository({ StoreResult(listOf(offer())) })
+        repository.refresh()
+        val active = repository.state.first().offers.single()
+        val claim = repository.act(active, "claim")!!
+        repository.act(active, "ignore")
+        assertFalse(repository.undoAction(active, claim))
+        assertTrue(database.watchDao().mark(active.gameKey)!!.ignored)
+
+        val restore = repository.act(active, "restore")!!
+        repository.clearMarks()
+        assertFalse(repository.undoAction(active, restore))
+        assertNull(database.watchDao().mark(active.gameKey))
+
+        val snooze = repository.act(active, "snooze")!!
+        val written = requireNotNull(snooze.written)
+        val changed = written.copy(snoozedUntil = written.snoozedUntil + 1)
+        database.watchDao().putMarks(listOf(changed))
+        assertFalse(repository.undoAction(active, snooze))
+        assertEquals(changed, database.watchDao().mark(active.gameKey))
+
+        val latest = repository.act(active, "claim")!!
+        repository.importBackup(BackupData(WatchSettings(stores = "epic", trackFreeToKeep = false),
+            listOf(latest.written!!), emptyList(), "", false), false)
+        assertFalse(repository.undoAction(active, latest))
+        assertTrue(database.watchDao().mark(active.gameKey)!!.claimed)
+    }
+
+    @Test
+    fun migrationPreservesBetaSettingsAndMarks() = runBlocking {
+        val name = "beta-migration-test.db"
+        context.deleteDatabase(name)
+        val json = InstrumentationRegistry.getInstrumentation().context.assets.open("bz.fgw.android.data.WatchDatabase/3.json")
+            .bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
+        context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { old ->
+            val entities = json.getJSONArray("entities")
+            for (index in 0 until entities.length()) {
+                val entity = entities.getJSONObject(index)
+                old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", entity.getString("tableName")))
+            }
+            val setup = json.getJSONArray("setupQueries")
+            for (index in 0 until setup.length()) old.execSQL(setup.getString(index))
+            old.execSQL("INSERT INTO settings VALUES(1,'DE',7,1,'steam,gog','en',3,1,1,1320,480,1,30,5,'{}',1,1,'title',1,90,14,1)")
+            old.execSQL("INSERT INTO personal_marks VALUES('steam:app:123','Saved game','https://store.steampowered.com/app/123/',1,0,'',0,42,0)")
+            old.version = 3
+        }
+        val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
+            .setDriver(AndroidSQLiteDriver()).addMigrations(MIGRATION_3_4)
+            .setQueryCoroutineContext(Dispatchers.IO).build()
+        try {
+            val dao = migrated.watchDao()
+            val settings = dao.settings()
+            assertEquals("system", settings.theme)
+            assertEquals("DE", settings.country)
+            assertEquals(30, settings.intervalMinutes)
+            assertEquals(5, settings.reminderHours)
+            assertEquals("title", settings.sortBy)
+            assertTrue(settings.compactView)
+            assertTrue(settings.quietHoursEnabled)
+            assertTrue(dao.mark("steam:app:123")!!.claimed)
+        } finally {
+            migrated.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    @Test
     fun migrationPreservesVersionOneSettingsOffersAndDeliveredEvents() = runBlocking {
         val name = "migration-test.db"
         context.deleteDatabase(name)
@@ -575,12 +669,13 @@ class RepositoryDeviceTest {
         }
         val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
         try {
             val dao = migrated.watchDao()
             assertEquals("RU", dao.settings().country)
+            assertEquals("system", dao.settings().theme)
             assertEquals(setOf("epic"), dao.settings().selectedStores())
             assertEquals(7L, dao.settings().revision)
             assertEquals("Old game", dao.offer("old-campaign")?.title)

@@ -147,9 +147,7 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
                 val start = activeWindows.mapNotNull { it.first }.maxOrNull()
                 val title = item.getString("title").trim()
                 require(title.isNotEmpty()) { "Missing title" }
-                val images = item.optJSONArray("keyImages").objects()
-                val image = (images.firstOrNull { it.optString("type") == "OfferImageWide" }
-                    ?: images.firstOrNull { it.optString("type") == "Thumbnail" })?.optString("url")?.takeIf { it.isNotBlank() }
+                val image = EpicMetadata.image(item)
                 offers[id] = StoreOffer(id, title.take(300), productUrl(item), start, end, image,
                     originalPrice = original.toLong(),
                     currency = price.optString("currencyCode").takeIf { it.matches(Regex("[A-Z]{3}")) },

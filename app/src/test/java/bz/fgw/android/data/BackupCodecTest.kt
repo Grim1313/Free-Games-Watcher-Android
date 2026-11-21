@@ -14,13 +14,14 @@ class BackupCodecTest {
 
     @Test fun roundTripPreservesSettingsMarksAndRepeatedCampaigns() {
         val settings = WatchSettings(country = "DE", stores = "steam,gog", language = "en", intervalMinutes = 30,
-            compactView = true, reminderHours = 5, filtersJson = FilterPreferences(minRating = 85, blockedAppIds = setOf("456")).toJson())
+            compactView = true, reminderHours = 5, theme = "dark", filtersJson = FilterPreferences(minRating = 85, blockedAppIds = setOf("456")).toJson())
         val mark = PersonalMark(offer.gameKey, offer.title, offer.url, claimed = true, hiddenCampaign = offer.campaignId, snoozedUntil = 9000, updatedAt = 2000)
         val second = offer.copy(campaignId = "second", start = 3000, end = 4000)
         val encoded = BackupCodec.encode(settings, listOf(mark), listOf(offer, second), true)
         val parsed = BackupCodec.decode(encoded)
         assertEquals(30, parsed.settings.intervalMinutes)
         assertEquals("DE", parsed.settings.country)
+        assertEquals("dark", parsed.settings.theme)
         assertEquals(setOf("456"), FilterPreferences.fromJson(parsed.settings.filtersJson).blockedAppIds)
         assertEquals(listOf(mark), parsed.marks)
         assertEquals(2, parsed.history.size)
@@ -46,12 +47,24 @@ class BackupCodecTest {
         val json = requireNotNull(javaClass.getResourceAsStream("/backup/browser-v3.json")).bufferedReader().use { it.readText() }
         val parsed = BackupCodec.decode(json)
         assertEquals("DE", parsed.settings.country)
+        assertEquals("system", parsed.settings.theme)
         assertEquals(30, parsed.settings.intervalMinutes)
         assertEquals("steam:app:123", parsed.marks.single().gameKey)
         assertTrue(parsed.marks.single().claimed)
         assertEquals("19,99 €", parsed.history.single().priceText)
         assertEquals(92, parsed.history.single().ratingPercent)
         assertEquals(120, parsed.history.single().reviewCount)
+    }
+
+    @Test fun browserScreenshotsTakePriorityAndUnsafeImagesFallBack() {
+        val root = JSONObject(BackupCodec.encode(WatchSettings(), emptyList(), listOf(offer), true))
+        val entry = root.getJSONArray("history").getJSONObject(0)
+        val header = "https://shared.akamai.steamstatic.com/steam/apps/123/header.jpg"
+        val screenshot = "https://shared.akamai.steamstatic.com/steam/apps/123/screenshot.jpg"
+        entry.put("headerImage", header).put("screenshotThumbnail", screenshot)
+        assertEquals(screenshot, BackupCodec.decode(root.toString()).history.single().imageUrl)
+        entry.put("screenshotThumbnail", "https://example.com/untrusted.jpg")
+        assertEquals(header, BackupCodec.decode(root.toString()).history.single().imageUrl)
     }
 
     @Test fun disabledHistoryIsExcludedFromExport() {

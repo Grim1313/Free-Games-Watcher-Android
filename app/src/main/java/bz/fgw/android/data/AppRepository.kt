@@ -44,6 +44,13 @@ data class FeedState(
 
 enum class ScanOutcome { SUCCESS, RETRY, STALE }
 
+data class MarkUndo(
+    val gameKey: String,
+    val previous: PersonalMark?,
+    val written: PersonalMark?,
+    val generation: Long,
+)
+
 class AppRepository internal constructor(
     private val context: Context,
     internal val database: WatchDatabase,
@@ -57,6 +64,7 @@ class AppRepository internal constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val scanMutex = Mutex()
     private val settingsMutex = Mutex()
+    private var markGeneration = 0L
     private val activeScans = mutableMapOf<Long, Deferred<ScanOutcome>>()
     private val notifier = GiveawayNotifications(context)
 
@@ -136,6 +144,11 @@ class AppRepository internal constructor(
 
     suspend fun setCompact(compact: Boolean) = changeSettings { it.copy(compactView = compact) }
 
+    suspend fun setTheme(theme: String) {
+        require(theme in setOf("system", "light", "dark"))
+        changeSettings { it.copy(theme = theme) }
+    }
+
     suspend fun setBadge(enabled: Boolean) = changeSettings { it.copy(badgeEnabled = enabled) }
 
     suspend fun resetSettings() = withBackupSettingsLock {
@@ -205,14 +218,15 @@ class AppRepository internal constructor(
 
     suspend fun setClaimed(offer: StoredOffer, claimed: Boolean) = act(offer, if (claimed) "claim" else "unclaim")
 
-    suspend fun act(offer: StoredOffer, action: String) = settingsMutex.withLock {
+    suspend fun act(offer: StoredOffer, action: String): MarkUndo? = settingsMutex.withLock {
         transaction {
             if (action == "read") {
                 dao.markRead(listOf(offer.campaignId))
-                return@transaction
+                return@transaction null
             }
             val now = clock()
-            val old = dao.mark(offer.gameKey) ?: PersonalMark(offer.gameKey, offer.title, offer.url)
+            val previous = dao.mark(offer.gameKey)
+            val old = previous ?: PersonalMark(offer.gameKey, offer.title, offer.url)
             val mark = when (action) {
                 "claim" -> old.copy(claimed = true)
                 "unclaim" -> old.copy(claimed = false)
@@ -222,22 +236,40 @@ class AppRepository internal constructor(
                 "restore" -> PersonalMark(offer.gameKey, offer.title, offer.url)
                 else -> error("Unknown offer action")
             }
-            if (!mark.claimed && !mark.ignored && mark.hiddenCampaign.isEmpty() && !mark.snoozePending && mark.snoozedUntil <= now) {
+            val written = if (!mark.claimed && !mark.ignored && mark.hiddenCampaign.isEmpty() && !mark.snoozePending && mark.snoozedUntil <= now) {
                 dao.removeMark(offer.gameKey)
+                null
             } else {
-                dao.putMarks(listOf(mark.copy(title = offer.title, url = offer.url, updatedAt = now)))
+                mark.copy(title = offer.title, url = offer.url, updatedAt = now).also { dao.putMarks(listOf(it)) }
             }
             if (mark.suppresses(offer, now)) {
                 for (entry in dao.gameOffers(offer.store, offer.id)) {
                     if (mark.suppresses(entry, now)) notifier.cancel(entry.campaignId)
                 }
             }
+            MarkUndo(offer.gameKey, previous, written, ++markGeneration)
         }
     }
 
-    suspend fun restoreMark(key: String) = settingsMutex.withLock { dao.removeMark(key) }
+    suspend fun undoAction(offer: StoredOffer, undo: MarkUndo?): Boolean = settingsMutex.withLock {
+        if (undo == null || undo.gameKey != offer.gameKey || undo.generation != markGeneration) return@withLock false
+        transaction {
+            if (dao.mark(offer.gameKey) != undo.written) return@transaction false
+            if (undo.previous == null) dao.removeMark(offer.gameKey) else dao.putMarks(listOf(undo.previous))
+            markGeneration++
+            true
+        }
+    }
 
-    suspend fun clearMarks() = settingsMutex.withLock { dao.clearMarks() }
+    suspend fun restoreMark(key: String): Unit = settingsMutex.withLock {
+        dao.removeMark(key)
+        markGeneration++
+    }
+
+    suspend fun clearMarks(): Unit = settingsMutex.withLock {
+        dao.clearMarks()
+        markGeneration++
+    }
 
     suspend fun clearHistory() = transaction {
         dao.hideHistory()
@@ -257,6 +289,7 @@ class AppRepository internal constructor(
     internal suspend fun withBackupSettingsLock(block: suspend () -> Unit) = withContext(Dispatchers.IO) {
         settingsMutex.withLock {
             block()
+            markGeneration++
             notifier.cancelAll()
             schedule(dao.settings())
         }

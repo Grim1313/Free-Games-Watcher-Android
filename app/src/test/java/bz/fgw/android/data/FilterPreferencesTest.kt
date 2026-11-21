@@ -51,12 +51,15 @@ class FilterPreferencesTest {
         assertEquals(FilterPreferences(), FilterPreferences.fromJson("broken"))
     }
 
-    @Test fun sortUsesDiscoveryTimeAndComparableRatingsWithUnknownLast() {
+    @Test fun sortUsesDiscoveryTimeAndSteamRatingsWithOtherStoresByDeadline() {
         val old = offer().copy(firstSeen = 1, lastConfirmed = 900, ratingPercent = 70)
         val recent = offer(store = "gog").copy(firstSeen = 2, lastConfirmed = 200, ratingValue = 4.0)
         val unknown = offer(store = "epic").copy(firstSeen = 3)
         assertEquals(listOf(unknown, recent, old), sortOffers(listOf(old, recent, unknown), "newest"))
-        assertEquals(listOf(recent, old, unknown), sortOffers(listOf(unknown, old, recent), "rating"))
+        val steamBest = offer(id = "app:456").copy(ratingPercent = 95)
+        assertEquals(listOf(steamBest, old, offer()), sortOffers(listOf(offer(), old, steamBest), "rating"))
+        val gogEnding = recent.copy(campaignId = "ending", end = 100, ratingValue = 2.0)
+        assertEquals(listOf(gogEnding, recent), sortOffers(listOf(recent, gogEnding), "rating"))
         assertEquals(listOf(recent, old), sortOffers(listOf(old, recent.copy(end = 200)), "ending").map { it.copy(end = null) })
     }
 }

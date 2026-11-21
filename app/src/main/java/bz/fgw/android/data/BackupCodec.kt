@@ -97,6 +97,7 @@ object BackupCodec {
             renotifyAfterRetention = source.optBoolean("renotifyAfterRetention", true),
             notifiedRetentionDays = source.optInt("notifiedRetentionDays", 14).coerceIn(1, 365),
             filtersJson = FilterPreferences.fromJson(source.optJSONObject("filters")?.toString() ?: "{}").toJson(),
+            theme = source.optString("androidTheme", "system").takeIf { it in setOf("system", "light", "dark") } ?: "system",
         )
     }
 
@@ -111,6 +112,7 @@ object BackupCodec {
         .put("trackFreeToKeep", settings.trackFreeToKeep).put("badgeEnabled", settings.badgeEnabled)
         .put("notifiedRetentionDays", settings.notifiedRetentionDays).put("renotifyAfterRetention", settings.renotifyAfterRetention)
         .put("filters", JSONObject(settings.filtersJson))
+        .put("androidTheme", settings.theme)
 
     private fun readOffer(item: JSONObject, fallbackCountry: String): StoredOffer {
         val id = item.getString("stableId")
@@ -124,7 +126,8 @@ object BackupCodec {
         }
         val store = storeOf(id)
         val country = item.optString("region", fallbackCountry).uppercase(Locale.ROOT).takeIf { it in Locale.getISOCountries() } ?: fallbackCountry
-        val image = item.optString("headerImage").ifEmpty { item.optString("capsuleImage") }.takeIf { StoreUrls.isCover(store, it) }
+        val image = listOf("screenshotThumbnail", "screenshotFull", "headerImage", "capsuleImage")
+            .firstNotNullOfOrNull { key -> item.optString(key).takeIf { StoreUrls.isCover(store, it) } }
         val percent = item.optInt("reviewPercent", -1).takeIf { store == "steam" && it in 0..100 }
         val count = item.optInt(if (store == "gog") "gogRatingCount" else "reviewTotal", 0).takeIf { it > 0 }
         val rating = item.optDouble("gogRating", 0.0).takeIf { store == "gog" && it > 0 && it <= 5 && count != null }

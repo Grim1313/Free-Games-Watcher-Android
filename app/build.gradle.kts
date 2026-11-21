@@ -12,8 +12,8 @@ android {
         applicationId = "bz.fgw.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.4.0-beta1"
+        versionCode = 6
+        versionName = "1.0.0"
         testInstrumentationRunner = "bz.fgw.android.BetaTestRunner"
     }
     buildTypes {
@@ -41,8 +41,8 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.1")
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.room3:room3-runtime:3.0.3")
     implementation("androidx.sqlite:sqlite-framework:2.7.1")

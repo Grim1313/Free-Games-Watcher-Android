@@ -1,94 +1,59 @@
 package bz.fgw.android.ui
 
-import android.app.TimePickerDialog
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.res.Configuration
-import android.view.ContextThemeWrapper
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import bz.fgw.android.R
 import bz.fgw.android.data.FilterPreferences
 import bz.fgw.android.data.PersonalMark
-import bz.fgw.android.data.sortOffers
-import bz.fgw.android.data.CheckStatus
-import bz.fgw.android.data.FeedState
 import bz.fgw.android.data.StoredOffer
-import java.util.Locale
+import bz.fgw.android.data.sortOffers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
-fun FgwTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) darkColorScheme(
-        primary = Color(0xFFB9CAFF),
-        background = Color(0xFF11151E),
-        surface = Color(0xFF191E29),
-        secondaryContainer = Color(0xFF283448),
+fun FgwTheme(theme: String = "system", content: @Composable () -> Unit) {
+    val dark = when (theme) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
+    val colors = if (dark) darkColorScheme(
+        primary = Color(0xFFC0E899), onPrimary = Color(0xFF182713),
+        background = Color.Black, onBackground = Color(0xFFF1F3EF),
+        surface = Color.Black, onSurface = Color(0xFFF1F3EF),
+        onSurfaceVariant = Color(0xFFB0BAB2), surfaceVariant = Color(0xFF151A17),
+        secondaryContainer = Color(0xFF25371D), onSecondaryContainer = Color(0xFFC6EF92),
+        outline = Color(0xFF7E8B80), outlineVariant = Color(0xFF2C322E),
     ) else lightColorScheme(
-        primary = Color(0xFF385BCE),
-        background = Color(0xFFF6F7FB),
-        surface = Color.White,
-        secondaryContainer = Color(0xFFE7EDFF),
+        primary = Color(0xFF245C42), onPrimary = Color.White,
+        background = Color(0xFFF6F8F3), onBackground = Color(0xFF18221D),
+        surface = Color.White, onSurface = Color(0xFF18221D),
+        onSurfaceVariant = Color(0xFF49594E), surfaceVariant = Color(0xFFE9EEE6),
+        secondaryContainer = Color(0xFFC6EF92), onSecondaryContainer = Color(0xFF172F1F),
+        outline = Color(0xFF738170), outlineVariant = Color(0xFFD4DDD3),
     )
     MaterialTheme(colorScheme = colors, content = content)
 }
@@ -111,26 +76,25 @@ fun FeedScreen(
     val failed by model.actionFailed.collectAsStateWithLifecycle()
     val text = remember(state.language) { UiText(state.language) }
     var tab by rememberSaveable { mutableStateOf("giveaways") }
+    var settingsPage by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(15_000)
-        }
-    }
     var query by rememberSaveable(tab) { mutableStateOf("") }
+    var searching by rememberSaveable(tab) { mutableStateOf(false) }
     var storeFilter by rememberSaveable(tab) { mutableStateOf("all") }
     var historyFilter by rememberSaveable(tab) { mutableStateOf("all") }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(15_000) } }
     val preferences = remember(state.settings.filtersJson) { FilterPreferences.fromJson(state.settings.filtersJson) }
     val marks = remember(state.marks) { state.marks.associateBy { it.gameKey } }
-    val activeCount = state.offers.count { it.activeAt(now) && preferences.accepts(it) && marks[it.gameKey]?.suppresses(it, now) != true }
+    val active = state.offers.filter { it.activeAt(now) && preferences.accepts(it) && marks[it.gameKey]?.suppresses(it, now) != true }
     val source = when (tab) {
         "history" -> state.history
         "upcoming" -> state.upcoming.filter { it.start != null && it.start > now && preferences.accepts(it) && marks[it.gameKey]?.suppresses(it, now) != true }
-        else -> state.offers.filter { it.activeAt(now) && preferences.accepts(it) && marks[it.gameKey]?.suppresses(it, now) != true }
+        else -> active
     }
-    val offers = sortOffers(source.filter { offer ->
+    val offers = source.filter { offer ->
         (storeFilter == "all" || offer.store == storeFilter) &&
             (query.isBlank() || offer.title.contains(query.trim(), true) || offer.id.contains(query.trim(), true)) &&
             (tab != "history" || when (historyFilter) {
@@ -142,625 +106,372 @@ fun FeedScreen(
                 "snoozed" -> (marks[offer.gameKey]?.snoozedUntil ?: 0) > now
                 else -> true
             })
-    }, state.settings.sortBy).let { if (tab == "upcoming") it.sortedBy { offer -> offer.start ?: Long.MAX_VALUE } else it }
-    val selected = offers.find { it.campaignId == selectedId }
-    val openDetails: (StoredOffer) -> Unit = { selectedId = it.campaignId }
-    BackHandler(enabled = selectedId != null || tab != "giveaways") {
-        if (selectedId != null) selectedId = null else tab = "giveaways"
     }
-
-    Scaffold { insets ->
-        BoxWithConstraints(Modifier.fillMaxSize().padding(insets)) {
-            val wide = maxWidth >= 840.dp
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("Free Games Watcher", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf("giveaways" to if (state.settings.badgeEnabled) "${text.giveaways} ($activeCount)" else text.giveaways, "upcoming" to text.choose("Скоро", "Upcoming"), "history" to text.history, "settings" to text.settings).forEach { (key, label) ->
-                        FilterChip(
-                            selected = tab == key,
-                            onClick = { tab = key; selectedId = null },
-                            label = { Text(label) },
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        )
-                    }
-                }
-                when (tab) {
-                    "settings" -> SettingsScreen(state, text, model, notificationsAvailable, refreshing, onNotificationsChanged, onOpenNotificationSettings)
-                    else -> Row(Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 20.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            item {
-                                Text(
-                                    when (tab) { "history" -> text.history; "upcoming" -> text.choose("Будущие раздачи Epic", "Upcoming Epic giveaways"); else -> text.choose("Раздачи для ПК", "Free PC games") },
-                                    style = MaterialTheme.typography.headlineLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 12.dp),
-                                )
-                            }
-                            if (tab == "giveaways") {
-                                item { Text(text.country(state.country), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                                item { ScanCard(state, text, refreshing, model::refresh) }
-                                if (state.notificationsEnabled && !notificationsAvailable) {
-                                    item {
-                                        Card {
-                                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Text(text.systemBlocked)
-                                                TextButton(onClick = onOpenNotificationSettings) { Text(text.systemSettings) }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (state.notificationsEnabled && notificationsAvailable && state.remindersEnabled && !remindersAvailable) {
-                                    item {
-                                        Card {
-                                            Column(Modifier.padding(16.dp)) {
-                                                Text(text.choose("Android блокирует напоминания", "Android is blocking expiry reminders"))
-                                                TextButton(onClick = onOpenNotificationSettings) { Text(text.systemSettings) }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            item {
-                                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                                    label = { Text(text.choose("Поиск по названию или ID", "Search title or ID")) })
-                                if (tab != "upcoming") FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    (listOf("all") + listOf("steam", "epic", "gog")).forEach { store ->
-                                        FilterChip(selected = storeFilter == store, onClick = { storeFilter = store },
-                                            label = { Text(if (store == "all") text.choose("Все", "All") else storeName(store)) })
-                                    }
-                                }
-                                if (tab != "upcoming") SortSelector(state.settings.sortBy, text, model::setSort)
-                                if (tab == "history") {
-                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        listOf("all", "active", "ended", "claimed", "ignored", "hidden", "snoozed").forEach { status ->
-                                            FilterChip(selected = historyFilter == status, onClick = { historyFilter = status },
-                                                label = { Text(historyStatusLabel(status, text)) })
-                                        }
-                                    }
-                                }
-                                if (tab == "giveaways" && offers.any { !it.isRead }) {
-                                    TextButton(onClick = model::markAllRead) { Text(text.choose("Отметить все прочитанными", "Mark all as read")) }
-                                }
-                            }
-                            if (offers.isEmpty()) {
-                                item {
-                                    val emptyTitle = when {
-                                        query.isNotBlank() || storeFilter != "all" || (tab == "history" && historyFilter != "all") -> text.choose("Ничего не найдено", "No matches")
-                                        tab == "history" -> text.choose("История пока пуста", "History is empty")
-                                        tab == "upcoming" -> text.choose("Будущие раздачи пока не объявлены", "No upcoming giveaways announced")
-                                        state.selectedStores.isEmpty() -> text.noStores
-                                        refreshing -> text.choose("Ищем бесплатные игры", "Finding free games")
-                                        state.checks.any { it.error != null || !it.complete } -> text.choose("Проверка не завершена", "Check is incomplete")
-                                        state.checks.isEmpty() -> text.firstCheck
-                                        else -> text.choose("Активных раздач пока нет", "No active giveaways")
-                                    }
-                                    Text(emptyTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 16.dp))
-                                    if (state.selectedStores.isEmpty() && tab != "history") Text(text.noStoresDetail)
-                                }
-                            }
-                            items(offers, key = { it.campaignId }) { offer ->
-                                if (wide) {
-                                    Card(onClick = { openDetails(offer) }, colors = CardDefaults.cardColors(
-                                        containerColor = if (offer.campaignId == selectedId) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-                                    )) {
-                                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text(storeName(offer.store), style = MaterialTheme.typography.labelLarge)
-                                            Text(offer.title, style = MaterialTheme.typography.titleLarge)
-                                            Text(status(offer, now, marks[offer.gameKey]?.claimed == true, text))
-                                            OfferMetadata(offer, text)
-                                        }
-                                    }
-                                } else OfferCard(offer, text, now, marks[offer.gameKey], tab == "history", offer.store in state.selectedStores && !state.settings.compactView, onOpenOffer, model::act)
-                            }
-                            item {
-                                Text(
-                                    if (tab == "history") text.choose("Отметка «Уже забрал» сохраняется для игры при повторных раздачах.", "Claimed status stays with the game across future giveaways.")
-                                    else text.choose("Получите игру в своём аккаунте магазина до окончания акции.", "Claim the game in your store account before the offer ends."),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 24.dp),
-                                )
-                            }
-                        }
-                        if (wide) {
-                            val detail = selected ?: offers.firstOrNull()
-                            Box(Modifier.weight(1f).fillMaxHeight().padding(20.dp)) {
-                                if (detail != null) Column(Modifier.verticalScroll(rememberScrollState())) {
-                                    OfferCard(detail, text, now, marks[detail.gameKey], true, detail.store in state.selectedStores && !state.settings.compactView, onOpenOffer, model::act)
-                                }
-                            }
-                        }
-                    }
-                }
+    val selected = (state.offers + state.history + state.upcoming).find { it.campaignId == selectedId }
+    val detail = notificationOffer ?: selected
+    val closeDetail = { selectedId = null; onDismissNotificationOffer() }
+    val openDetails: (StoredOffer) -> Unit = { selectedId = it.campaignId; model.act(it, "read") }
+    val action: (StoredOffer, String) -> Unit = { offer, actionName ->
+        scope.launch {
+            try {
+                val previous = model.performAction(offer, actionName)
+                snackbar.currentSnackbarData?.dismiss()
+                val result = snackbar.showSnackbar(
+                    message = "${offer.title} · ${actionLabel(actionName, text)}",
+                    actionLabel = text.choose("Отменить", "Undo"), withDismissAction = true,
+                    duration = SnackbarDuration.Long,
+                )
+                if (result == SnackbarResult.ActionPerformed) model.undoAction(offer, previous)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                snackbar.showSnackbar(text.actionFailed)
             }
         }
     }
-    if (notificationOffer != null) {
-        val current = (state.offers + state.history + state.upcoming).find { it.campaignId == notificationOffer.campaignId } ?: notificationOffer
-        AlertDialog(
-            onDismissRequest = onDismissNotificationOffer,
-            title = { Text(current.title) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(storeName(current.store))
-                    Text(status(current, now, marks[current.gameKey]?.claimed == true, text))
-                    Text(current.end?.let(text::deadline) ?: text.noDeadline)
-                    TextButton(onClick = { model.act(current, if (marks[current.gameKey]?.claimed == true) "unclaim" else "claim") }) {
-                        Text(if (marks[current.gameKey]?.claimed == true) text.undoClaim else text.claimed)
+    BackHandler(enabled = detail != null || tab != "giveaways") {
+        if (detail != null) closeDetail() else tab = "giveaways"
+    }
+    val tabs = listOf("giveaways", "upcoming", "history", "settings")
+    fun tabLabel(key: String): String = when (key) {
+        "giveaways" -> text.giveaways
+        "upcoming" -> text.choose("Скоро", "Upcoming")
+        "history" -> text.history
+        else -> text.settings
+    }
+    fun tabIcon(key: String): String = when (key) { "giveaways" -> "gift"; "upcoming" -> "clock"; else -> key }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 840.dp
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            snackbarHost = { SnackbarHost(snackbar) },
+            bottomBar = {
+                if (!wide && detail == null) NavigationBar(containerColor = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
+                    tabs.forEach { key ->
+                        NavigationBarItem(selected = tab == key, onClick = { settingsPage = null; tab = key },
+                            icon = { AppIcon(tabIcon(key)) }, label = { Text(tabLabel(key), maxLines = 1) })
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = onDismissNotificationOffer) { Text(text.close) } },
-        )
-    }
-    if (alert != null || failed) {
-        AlertDialog(
-            onDismissRequest = { onDismissAlert(); model.dismissMessage() },
-            text = { Text(alert ?: text.actionFailed) },
-            confirmButton = { TextButton(onClick = { onDismissAlert(); model.dismissMessage() }) { Text(text.okay) } },
-        )
-    }
-}
-
-@Composable
-private fun ScanCard(state: FeedState, text: UiText, refreshing: Boolean, refresh: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!state.settings.trackFreeToKeep) Text(text.choose("Отслеживание приостановлено. Включите его в настройках.", "Tracking is paused. Resume it in Settings."))
-            if (refreshing) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                Text(text.refreshing)
-            }
-            state.selectedStores.sorted().forEach { store ->
-                val check = state.checks.find { it.store == store }
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(storeName(store), style = MaterialTheme.typography.titleSmall)
-                    Text(check?.lastSuccess?.let(text::lastSuccess) ?: text.firstCheck, style = MaterialTheme.typography.bodySmall)
-                    if (check?.error != null || check?.complete == false) {
-                        Text(
-                            if (check.error != null && check.error != "partial") text.sourceError else text.partial,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        if (state.offers.any { it.store == store }) Text(text.cached, style = MaterialTheme.typography.bodySmall)
+        ) { insets ->
+            Row(Modifier.fillMaxSize().padding(insets)) {
+                if (wide) NavigationRail(containerColor = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxHeight()) {
+                    Spacer(Modifier.height(20.dp))
+                    tabs.forEach { key ->
+                        NavigationRailItem(selected = tab == key, onClick = { closeDetail(); settingsPage = null; tab = key },
+                            icon = { AppIcon(tabIcon(key)) }, label = { Text(tabLabel(key)) })
                     }
                 }
-            }
-            Button(onClick = refresh, enabled = !refreshing && state.selectedStores.isNotEmpty() && state.settings.trackFreeToKeep, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(text.refresh)
-            }
-        }
-    }
-}
-
-@Composable
-private fun OfferCard(
-    offer: StoredOffer,
-    text: UiText,
-    now: Long,
-    mark: PersonalMark?,
-    showCountry: Boolean,
-    loadCover: Boolean,
-    open: (StoredOffer) -> Unit,
-    action: (StoredOffer, String) -> Unit,
-) {
-    var actionsOpen by remember(offer.campaignId) { mutableStateOf(false) }
-    val ended = offer.ended || (offer.end != null && offer.end <= now)
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (loadCover) OfferCover(offer.store, offer.imageUrl, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)))
-            Text(storeName(offer.store) + if (showCountry) " · ${text.country(offer.country)}" else "", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text(offer.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            if (!offer.isRead && !offer.upcoming) TextButton(onClick = { action(offer, "read") }) { Text(text.choose("Новое · отметить прочитанным", "New · mark as read")) }
-            Text(status(offer, now, mark?.claimed == true, text), style = MaterialTheme.typography.titleSmall)
-            if (offer.start != null && offer.start > now) Text(text.choose("Начнётся ${text.time(offer.start)}", "Starts ${text.time(offer.start)}"))
-            Text(offer.end?.let(text::deadline) ?: text.noDeadline)
-            OfferMetadata(offer, text)
-            if (offer.imported) Text(text.choose("Импортированная запись. Доступность подтвердится при проверке магазина.", "Imported record. A store check will confirm availability."), style = MaterialTheme.typography.bodySmall)
-            if (mark?.ignored == true) Text(text.choose("Игра игнорируется", "Game ignored"))
-            if (mark?.hiddenCampaign == offer.campaignId) Text(text.choose("Эта раздача скрыта", "This giveaway is hidden"))
-            mark?.snoozedUntil?.takeIf { it > now }?.let { until ->
-                Text(text.choose("Отложено до ${text.time(until)}", "Snoozed until ${text.time(until)}"))
-            }
-            if (now - offer.lastConfirmed > 6 * 60 * 60 * 1000L && !ended) {
-                Text(text.choose("Данные устарели. Проверьте доступность в магазине.", "Saved data is old. Check availability in the store."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-            OutlinedButton(onClick = { open(offer); action(offer, "read") }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(text.openStore)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { action(offer, if (mark?.claimed == true) "unclaim" else "claim") }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                    Text(if (mark?.claimed == true) text.undoClaim else text.claimed)
-                }
-                Box {
-                    TextButton(onClick = { actionsOpen = true }) { Text(text.choose("Ещё", "More")) }
-                    DropdownMenu(expanded = actionsOpen, onDismissRequest = { actionsOpen = false }) {
-                        val actions = listOf("snooze" to text.choose("Отложить на 24 часа", "Snooze for 24 hours"),
-                            "hide" to text.choose("Скрыть эту раздачу", "Hide this giveaway"),
-                            "ignore" to text.choose("Игнорировать игру", "Ignore this game"),
-                            "restore" to text.choose("Снять все отметки", "Clear personal marks"))
-                        actions.forEach { (key, label) ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = { actionsOpen = false; action(offer, key) })
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    when {
+                        detail != null -> OfferDetails(detail, text, now, marks[detail.gameKey], !state.settings.compactView, closeDetail, onOpenOffer, action)
+                        tab == "settings" -> SettingsScreen(state, text, model, notificationsAvailable, refreshing, onNotificationsChanged, onOpenNotificationSettings, initialPage = settingsPage)
+                        else -> {
+                            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Image(painterResource(R.drawable.ic_giftpad), null, Modifier.size(30.dp).background(Color(0xFF173C2A), RoundedCornerShape(8.dp)))
+                                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                    Text(tabLabel(tab), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                    Text(state.lastSuccess?.let { last ->
+                                        val time = DateTimeFormatter.ofPattern("HH:mm", text.locale).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(last))
+                                        text.choose("Обновлено $time · ${state.country}", "Updated $time · ${state.country}")
+                                    } ?: text.country(state.country), style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (state.settings.badgeEnabled && tab == "giveaways") Text(active.size.toString(),
+                                    Modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                if (tab == "history") HistorySelector(historyFilter, text) { historyFilter = it }
+                                IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { AppIcon("search", text.choose("Поиск", "Search")) }
+                                IconButton(onClick = model::refresh, enabled = !refreshing && state.selectedStores.isNotEmpty() && state.settings.trackFreeToKeep) {
+                                    if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else AppIcon("refresh", text.refresh)
+                                }
+                            }
+                            if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                singleLine = true, label = { Text(text.choose("Название или ID", "Title or ID")) })
+                            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                if (tab != "upcoming") Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf("all", "steam", "epic", "gog").forEach { store ->
+                                        FilterChip(selected = storeFilter == store, onClick = { storeFilter = store },
+                                            label = { Text(if (store == "all") text.choose("Все", "All") else if (store == "epic") "Epic" else storeName(store), style = MaterialTheme.typography.labelSmall) })
+                                    }
+                                }
+                                SortSelector(state.settings.sortBy, text, model::setSort, compact = true)
+                            }
+                            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+                                val incomplete = state.checks.filter {
+                                    (tab != "upcoming" || it.store in setOf("epic", "gog")) &&
+                                        (storeFilter == "all" || it.store == storeFilter) && (it.error != null || !it.complete)
+                                }
+                                if (incomplete.isNotEmpty()) item {
+                                    TextButton(onClick = { settingsPage = "diagnostics"; tab = "settings" }, modifier = Modifier.fillMaxWidth()) {
+                                        Text(incomplete.joinToString(" · ") { check ->
+                                            val label = if (check.error != null && check.error != "partial")
+                                                text.choose("не удалось обновить", "could not update") else text.choose("неполные данные", "partial results")
+                                            "${storeName(check.store)} — $label"
+                                        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                                if (tab == "giveaways") {
+                                    if (!state.settings.trackFreeToKeep) item { FeedNotice(text.choose("Отслеживание приостановлено", "Tracking paused")) }
+                                    if (state.notificationsEnabled && (!notificationsAvailable || state.remindersEnabled && !remindersAvailable)) item {
+                                        TextButton(onClick = onOpenNotificationSettings, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                            Text(if (!notificationsAvailable) text.systemBlocked else text.choose("Android блокирует напоминания", "Android is blocking reminders"))
+                                        }
+                                    }
+                                }
+                                if (offers.isEmpty()) item {
+                                    val message = when {
+                                        query.isNotBlank() || storeFilter != "all" || historyFilter != "all" -> text.choose("Ничего не найдено", "No matches")
+                                        tab == "history" -> text.choose("История пока пуста", "History is empty")
+                                        tab == "upcoming" -> text.choose("Будущие раздачи пока не объявлены", "No upcoming giveaways announced")
+                                        state.selectedStores.isEmpty() -> text.noStoresDetail
+                                        refreshing -> text.refreshing
+                                        state.checks.any { it.error != null || !it.complete } -> text.choose("Проверка не завершена. Подробности в диагностике источников.", "Check incomplete. See source diagnostics for details.")
+                                        state.checks.isEmpty() -> text.firstCheck
+                                        else -> text.choose("Активных раздач пока нет", "No active giveaways")
+                                    }
+                                    Text(message, Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
+                                }
+                                listOf("steam", "epic", "gog").forEach { store ->
+                                    val group = sortOffers(offers.filter { it.store == store }, state.settings.sortBy)
+                                    if (group.isNotEmpty()) {
+                                        item(key = "store-$store") { StoreHeader(store, group.size) }
+                                        items(group, key = { it.campaignId }) { offer ->
+                                            CatalogOffer(offer, text, now, marks[offer.gameKey], !state.settings.compactView && store in state.selectedStores,
+                                                { openDetails(offer) }, { onOpenOffer(offer); model.act(offer, "read") }, action)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+    if (alert != null || failed) AlertDialog(
+        onDismissRequest = { onDismissAlert(); model.dismissMessage() },
+        text = { Text(alert ?: text.actionFailed) },
+        confirmButton = { TextButton(onClick = { onDismissAlert(); model.dismissMessage() }) { Text(text.okay) } },
+    )
 }
 
 @Composable
-private fun OfferMetadata(offer: StoredOffer, text: UiText) {
-    val price = formatOfferPrice(offer, text.locale)
-    if (price != null) Text(text.choose("Обычная цена $price · скидка 100%", "Regular price $price · 100% off"), style = MaterialTheme.typography.bodyMedium)
-    val rating = when {
-        offer.store == "steam" && offer.ratingPercent != null -> text.choose("${offer.ratingPercent}% положительных отзывов", "${offer.ratingPercent}% positive reviews")
-        offer.ratingValue != null -> "${String.format(text.locale, "%.1f", offer.ratingValue)} / 5"
-        else -> null
-    }
-    if (rating != null) Text(rating + (offer.reviewCount?.let { text.choose(" · отзывов $it", " · $it reviews") } ?: ""), style = MaterialTheme.typography.bodyMedium)
-    val type = when (offer.contentType) {
-        "dlc" -> "DLC"
-        "soundtrack" -> text.choose("Саундтрек", "Soundtrack")
-        "demo" -> text.choose("Демо", "Demo")
-        "tool" -> text.choose("Инструмент", "Tool")
-        "package" -> text.choose("Набор", "Package")
-        else -> null
-    }
-    val metadata = listOfNotNull(type, offer.genres.takeIf { it.isNotEmpty() }?.joinToString(", "),
-        offer.platforms.takeIf { it.isNotEmpty() }?.joinToString(" / ") { when (it) { "mac" -> "macOS"; "windows" -> "Windows"; "linux" -> "Linux"; else -> it } })
-    if (metadata.isNotEmpty()) Text(metadata.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-private fun status(offer: StoredOffer, now: Long, claimed: Boolean, text: UiText): String {
-    val lifecycle = when {
-        offer.ended || (offer.end != null && offer.end <= now) -> text.ended
-        offer.imported -> text.choose("Ожидает проверки", "Awaiting verification")
-        offer.start != null && offer.start > now -> text.choose("Скоро", "Upcoming")
-        else -> text.choose("Бесплатно навсегда", "Free to keep")
-    }
-    return if (claimed) "$lifecycle · ${text.claimed}" else lifecycle
-}
-
-private fun historyStatusLabel(value: String, text: UiText): String = when (value) {
-    "active" -> text.choose("Активные", "Active")
-    "ended" -> text.choose("Завершённые", "Ended")
-    "claimed" -> text.claimed
-    "ignored" -> text.choose("Игнорируемые", "Ignored")
-    "hidden" -> text.choose("Скрытые", "Hidden")
-    "snoozed" -> text.choose("Отложенные", "Snoozed")
-    else -> text.choose("Все статусы", "All statuses")
+private fun FeedNotice(message: String) {
+    Text(message, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
-private fun SortSelector(sort: String, text: UiText, change: (String) -> Unit) {
+private fun StoreHeader(store: String, count: Int) {
+    val dark = MaterialTheme.colorScheme.background == Color.Black
+    val colors = when (store) {
+        "steam" -> if (dark) Color(0xFF132737) to Color(0xFFA9D6FF) else Color(0xFFDDECF9) to Color(0xFF185484)
+        "epic" -> if (dark) Color(0xFF10292C) to Color(0xFF96E0E5) else Color(0xFFD9EFF1) to Color(0xFF076476)
+        else -> if (dark) Color(0xFF192C1B) to Color(0xFFAFE2A4) else Color(0xFFE1EFDC) to Color(0xFF286332)
+    }
+    Column(Modifier.fillMaxWidth().background(colors.first).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            CompositionLocalProvider(LocalContentColor provides colors.second) { StoreLogo(store, Modifier.size(20.dp)) }
+            Text(storeName(store), Modifier.weight(1f).padding(start = 8.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = colors.second)
+            Text(count.toString(), style = MaterialTheme.typography.labelLarge, color = colors.second)
+        }
+    }
+}
+
+@Composable
+private fun CatalogOffer(
+    offer: StoredOffer, text: UiText, now: Long, mark: PersonalMark?, cover: Boolean,
+    details: () -> Unit, open: () -> Unit, action: (StoredOffer, String) -> Unit,
+) {
+    val largeText = LocalDensity.current.fontScale > 1.3f
+    BoxWithConstraints(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 10.dp, vertical = 6.dp)) {
+        val stacked = maxWidth < 320.dp || largeText
+        Column {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).clickable(onClick = details), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (cover && offer.imageUrl != null) OfferCover(offer.store, offer.imageUrl, Modifier.width(if (stacked) 88.dp else 80.dp).clip(RoundedCornerShape(5.dp)))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text((if (!offer.isRead && !offer.upcoming) "• " else "") + offer.title,
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                            maxLines = if (largeText) 3 else 2, overflow = TextOverflow.Ellipsis)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            ContentBadge(offer.contentType, text)
+                            ratingLabel(offer, text)?.let { Text("☆ $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+                if (!stacked) OfferStoreButton(offer, text, now, open)
+            }
+            if (stacked) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) { OfferStoreButton(offer, text, now, open) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(offerTiming(offer, now, text), style = MaterialTheme.typography.labelSmall,
+                        color = if (offer.end != null && offer.end > now && offer.end - now < 86_400_000) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    offer.genres.firstOrNull()?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                }
+                MarkActions(offer, mark, text, action)
+            }
+            markLabel(mark, offer, now, text)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun ContentBadge(type: String, text: UiText) {
+    val dark = MaterialTheme.colorScheme.background == Color.Black
+    val color = when (type) {
+        "dlc" -> if (dark) Color(0xFF96E0E5) else Color(0xFF076476)
+        "tool", "software" -> if (dark) Color(0xFFAFE2A4) else Color(0xFF286332)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(contentLabel(type, text),
+        Modifier.background(color.copy(alpha = 0.10f), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+        color = color, style = MaterialTheme.typography.labelSmall)
+}
+
+@Composable
+private fun OfferStoreButton(offer: StoredOffer, text: UiText, now: Long, open: () -> Unit) {
+    val active = offer.activeAt(now)
+    Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(max = 112.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (active) Text("0", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            formatOfferPrice(offer, text.locale)?.let { Text(it, style = MaterialTheme.typography.labelSmall,
+                textDecoration = if (active) TextDecoration.LineThrough else null, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Button(onClick = open, contentPadding = PaddingValues(horizontal = 10.dp), modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(8.dp)) {
+            Text(text.choose("В магазин", "Store"), style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.width(4.dp))
+            AppIcon("arrow", text.openStore, Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun MarkActions(offer: StoredOffer, mark: PersonalMark?, text: UiText, action: (StoredOffer, String) -> Unit) {
+    Row {
+        listOf((if (mark?.claimed == true) "unclaim" else "claim") to "check", "snooze" to "clock", "hide" to "hide", "ignore" to "ignore").forEach { (key, icon) ->
+            IconButton(onClick = { action(offer, key) }, modifier = Modifier.size(48.dp)) { AppIcon(icon, actionLabel(key, text)) }
+        }
+    }
+}
+
+@Composable
+private fun OfferDetails(offer: StoredOffer, text: UiText, now: Long, mark: PersonalMark?, cover: Boolean, back: () -> Unit,
+    open: (StoredOffer) -> Unit, action: (StoredOffer, String) -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = back) { AppIcon("back", text.back) }
+            Text(storeName(offer.store), style = MaterialTheme.typography.titleMedium)
+        }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (cover) OfferCover(offer.store, offer.imageUrl, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)))
+            Text(offer.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(contentLabel(offer.contentType, text), color = MaterialTheme.colorScheme.primary)
+            Text(offerTiming(offer, now, text))
+            offer.start?.let { Text(text.choose("Начало · ${text.time(it)}", "Starts · ${text.time(it)}")) }
+            Text(offer.end?.let(text::deadline) ?: text.noDeadline)
+            formatOfferPrice(offer, text.locale)?.let { Text(text.choose("Обычная цена · $it", "Regular price · $it")) }
+            ratingLabel(offer, text)?.let { Text(it + (offer.reviewCount?.let { count -> text.choose(" · $count отзывов", " · $count reviews") } ?: "")) }
+            if (offer.genres.isNotEmpty()) Text(offer.genres.joinToString(" · "))
+            if (offer.platforms.isNotEmpty()) Text(offer.platforms.joinToString(" · ") { when (it) { "windows" -> "Windows"; "mac" -> "macOS"; "linux" -> "Linux"; else -> it } })
+            Text(text.country(offer.country), style = MaterialTheme.typography.bodySmall)
+            if (offer.imported) Text(text.choose("Импортированная запись. Доступность подтвердится при проверке магазина.", "Imported record. A store check will confirm availability."))
+            markLabel(mark, offer, now, text)?.let { Text(it) }
+            if (now - offer.lastConfirmed > 21_600_000 && offer.activeAt(now)) Text(text.choose("Данные устарели. Проверьте доступность в магазине.", "Saved data is old. Check availability in the store."), color = MaterialTheme.colorScheme.error)
+            Button(onClick = { open(offer) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(text.openStore); Spacer(Modifier.width(8.dp)); AppIcon("arrow") }
+            MarkActions(offer, mark, text, action)
+            if (mark != null) TextButton(onClick = { action(offer, "restore") }) { Text(text.choose("Снять все отметки", "Clear all marks")) }
+        }
+    }
+}
+
+private fun contentLabel(type: String, text: UiText): String = when (type) {
+    "dlc" -> "DLC"
+    "soundtrack" -> text.choose("Саундтрек", "Soundtrack")
+    "demo" -> text.choose("Демо", "Demo")
+    "tool", "software" -> text.choose("Программа", "Software")
+    "package" -> text.choose("Набор", "Package")
+    else -> text.choose("Игра", "Game")
+}
+
+private fun ratingLabel(offer: StoredOffer, text: UiText): String? = when {
+    offer.store == "steam" && offer.ratingPercent != null -> "${offer.ratingPercent}%"
+    offer.ratingValue != null -> "${String.format(text.locale, "%.1f", offer.ratingValue)} / 5"
+    else -> null
+}
+
+private fun offerTiming(offer: StoredOffer, now: Long, text: UiText): String {
+    if (offer.ended || offer.end != null && offer.end <= now) return text.ended
+    if (offer.imported) return text.choose("Ожидает проверки", "Awaiting verification")
+    if (offer.start != null && offer.start > now) return text.choose("Начнётся ${shortDate(offer.start, text)}", "Starts ${shortDate(offer.start, text)}")
+    val end = offer.end ?: return text.choose("Срок неизвестен", "End date unknown")
+    val hours = (end - now) / 3_600_000
+    val zone = ZoneId.systemDefault()
+    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    val endDay = Instant.ofEpochMilli(end).atZone(zone).toLocalDate()
+    val time = DateTimeFormatter.ofPattern("HH:mm", text.locale).withZone(zone).format(Instant.ofEpochMilli(end))
+    return when {
+        hours < 1 -> text.choose("Осталось меньше часа", "Less than an hour left")
+        endDay == today -> text.choose("Сегодня, $time", "Today, $time")
+        endDay == today.plusDays(1) -> text.choose("Завтра, $time", "Tomorrow, $time")
+        else -> text.choose("До ${shortDate(end, text)}", "Until ${shortDate(end, text)}")
+    }
+}
+
+private fun shortDate(value: Long, text: UiText): String = DateTimeFormatter.ofPattern(if (text.language == "en") "MMM d · HH:mm" else "d MMM · HH:mm", text.locale)
+    .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(value))
+
+private fun markLabel(mark: PersonalMark?, offer: StoredOffer, now: Long, text: UiText): String? {
+    if (mark == null) return null
+    return listOfNotNull(text.claimed.takeIf { mark.claimed }, text.choose("Игнорируется", "Ignored").takeIf { mark.ignored },
+        text.choose("Скрыта", "Hidden").takeIf { mark.hiddenCampaign == offer.campaignId },
+        text.choose("Отложена", "Snoozed").takeIf { mark.snoozedUntil > now }).joinToString(" · ").ifBlank { null }
+}
+
+@Composable
+private fun StoreLogo(store: String, modifier: Modifier = Modifier) {
+    val drawable = when (store) { "steam" -> R.drawable.ic_store_steam; "gog" -> R.drawable.ic_store_gog; else -> R.drawable.ic_store_epic }
+    Icon(painterResource(drawable), contentDescription = null, modifier = modifier)
+}
+
+@Composable
+internal fun SortSelector(sort: String, text: UiText, change: (String) -> Unit, compact: Boolean = false) {
     var expanded by remember { mutableStateOf(false) }
-    val choices = listOf("ending" to text.choose("По окончанию", "Ending soon"), "newest" to text.choose("По дате обнаружения", "Recently found"),
-        "rating" to text.choose("По рейтингу", "Highest rated"), "title" to text.choose("По названию", "Title"))
+    val choices = listOf("ending" to text.choose("Скоро завершатся", "Ending soon"), "newest" to text.choose("Сначала новые", "Newest first"),
+        "title" to text.choose("По названию", "Title"), "rating" to text.choose("Рейтинг Steam", "Steam rating"))
     Box {
-        TextButton(onClick = { expanded = true }) { Text(choices.find { it.first == sort }?.second ?: choices.first().second) }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        val label = if (compact) when (sort) {
+            "newest" -> text.choose("Новые", "Newest")
+            "title" -> text.choose("А–Я", "A–Z")
+            "rating" -> text.choose("Рейтинг", "Rating")
+            else -> text.choose("По сроку", "Ending")
+        } else choices.find { it.first == sort }?.second ?: choices.first().second
+        TextButton(onClick = { expanded = true }) {
+            AppIcon("sort")
+            Spacer(Modifier.width(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
+        }
+        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
             choices.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; change(key) }) }
         }
     }
 }
 
 @Composable
-private fun SettingsScreen(
-    state: FeedState,
-    text: UiText,
-    model: FeedViewModel,
-    notificationsAvailable: Boolean,
-    refreshing: Boolean,
-    notificationChange: (Boolean) -> Unit,
-    notificationSettings: () -> Unit,
-) {
-    var countryDialog by remember { mutableStateOf(false) }
-    var quietError by remember { mutableStateOf(false) }
-    var confirmClear by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var testBusy by remember { mutableStateOf(false) }
-    var testResult by remember { mutableStateOf<String?>(null) }
-    var reportCopied by remember { mutableStateOf<Boolean?>(null) }
-    val version = remember(context) {
-        @Suppress("DEPRECATION")
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
-    }
-    val uriHandler = LocalUriHandler.current
-    val configuration = LocalConfiguration.current
-    val pickTime: (Int, (Int) -> Unit) -> Unit = { minute, save ->
-        val localizedContext = ContextThemeWrapper(context, android.R.style.Theme_DeviceDefault_Dialog_Alert).apply {
-            applyOverrideConfiguration(Configuration(configuration).apply { setLocale(text.locale) })
+private fun HistorySelector(selected: String, text: UiText, select: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val choices = listOf("all" to text.choose("Все", "All"), "active" to text.choose("Активные", "Active"), "ended" to text.choose("Завершённые", "Ended"),
+        "claimed" to text.claimed, "ignored" to text.choose("Игнорируемые", "Ignored"), "hidden" to text.choose("Скрытые", "Hidden"), "snoozed" to text.choose("Отложенные", "Snoozed"))
+    Box {
+        IconButton(onClick = { expanded = true }, colors = IconButtonDefaults.iconButtonColors(
+            contentColor = if (selected == "all") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+        )) {
+            AppIcon("filter", text.choose("Фильтр истории · ", "History filter · ") + (choices.find { it.first == selected }?.second ?: choices.first().second))
         }
-        TimePickerDialog(localizedContext, { _, hour, minutes -> save(hour * 60 + minutes) }, minute / 60, minute % 60, true).show()
-    }
-    LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item { Text(text.settings, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp)) }
-        item {
-            SettingsGroup(text.choose("Каталог", "Catalog")) {
-                ToggleRow(text.choose("Отслеживать раздачи", "Track giveaways"), state.settings.trackFreeToKeep, model::setTracking)
-                Text(text.choose("Магазины", "Stores"), style = MaterialTheme.typography.titleSmall)
-                listOf("steam", "epic", "gog").forEach { store ->
-                    ToggleRow(storeName(store), store in state.selectedStores) { enabled ->
-                        model.setStore(store, enabled)
-                    }
-                }
-                if (state.selectedStores.isEmpty()) Text(text.noStoresDetail)
-                OutlinedButton(onClick = { countryDialog = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(text.choose("Страна · ", "Country · ") + text.country(state.country))
-                }
-                Text(text.choose("Доступность зависит от страны вашего аккаунта магазина.", "Availability depends on your store account's country."), style = MaterialTheme.typography.bodySmall)
-                Text(text.choose("Язык приложения", "App language"), style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("auto" to text.choose("Системный", "System"), "ru" to "Русский", "en" to "English").forEach { (code, label) ->
-                        FilterChip(selected = state.settings.language == code, onClick = { model.setLanguage(code) }, label = { Text(label) }, modifier = Modifier.heightIn(min = 48.dp))
-                    }
-                }
-            }
-        }
-        item {
-            SettingsGroup(text.choose("Фоновая проверка", "Background checks")) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(15, 30, 60, 180, 360, 720, 1440).forEach { minutes ->
-                        FilterChip(selected = state.settings.intervalMinutes == minutes, onClick = { model.setIntervalMinutes(minutes) },
-                            label = { Text(if (minutes < 60) text.choose("$minutes мин", "$minutes min") else text.choose("${minutes / 60} ч", "${minutes / 60} h")) }, modifier = Modifier.heightIn(min = 48.dp))
-                    }
-                }
-                Text(text.choose("Проверка выполняется при подключении к интернету. Android может отложить запуск для экономии заряда.", "Checks need an internet connection. Android may delay them to save battery."), style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
-            SettingsGroup(text.choose("Оповещения", "Notifications")) {
-                ToggleRow(text.choose("Новые раздачи", "New giveaways"), state.notificationsEnabled, notificationChange)
-                ToggleRow(text.choose("Напоминание об окончании", "Expiry reminder"), state.remindersEnabled, model::setReminders)
-                if (state.remindersEnabled) {
-                    NumberPreference(text.choose("За сколько часов напомнить", "Reminder lead time in hours"), state.settings.reminderHours, 1..72, text, model::setReminderHours)
-                }
-                Text(text.choose("Напоминание приходит при ближайшей проверке в выбранный период до окончания. Требуется известный срок раздачи.", "A reminder arrives at the next check within the selected period before the known deadline."), style = MaterialTheme.typography.bodySmall)
-                ToggleRow(text.choose("Повторять оповещения после срока хранения", "Allow alerts again after retention"), state.settings.renotifyAfterRetention) {
-                    model.setRepeatAlerts(it, state.settings.notifiedRetentionDays)
-                }
-                NumberPreference(text.choose("Хранить отправленные оповещения, дней", "Remember sent alerts, days"), state.settings.notifiedRetentionDays, 1..365, text) {
-                    model.setRepeatAlerts(state.settings.renotifyAfterRetention, it)
-                }
-                ToggleRow(text.choose("Тихие часы", "Quiet hours"), state.quietHoursEnabled) {
-                    model.setQuietHours(it, state.quietStartMinute, state.quietEndMinute)
-                }
-                if (state.quietHoursEnabled) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            pickTime(state.quietStartMinute) {
-                                if (it == state.quietEndMinute) quietError = true
-                                else model.setQuietHours(true, it, state.quietEndMinute)
-                            }
-                        }) { Text(text.choose("С ", "From ") + clockTime(state.quietStartMinute)) }
-                        OutlinedButton(onClick = {
-                            pickTime(state.quietEndMinute) {
-                                if (it == state.quietStartMinute) quietError = true
-                                else model.setQuietHours(true, state.quietStartMinute, it)
-                            }
-                        }) { Text(text.choose("До ", "Until ") + clockTime(state.quietEndMinute)) }
-                    }
-                    Text(text.choose("Местное время устройства. Актуальные оповещения придут при проверке после тихих часов.", "Uses the device's local time. Eligible notifications arrive at a check after quiet hours."), style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedButton(enabled = notificationsAvailable && !testBusy, onClick = {
-                    scope.launch {
-                        testBusy = true
-                        testResult = null
-                        try {
-                            testResult = if (model.testNotification()) "sent" else "blocked"
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            testResult = "failed"
-                        } finally {
-                            testBusy = false
-                        }
-                    }
-                }, modifier = Modifier.fillMaxWidth()) { Text(text.choose("Проверить уведомления", "Test notification")) }
-                if (!notificationsAvailable) Text(text.choose("Для проверки разрешите уведомления в настройках Android.", "Allow notifications in Android settings to run the test."), style = MaterialTheme.typography.bodySmall)
-                testResult?.let { result ->
-                    Text(when (result) {
-                        "sent" -> text.choose("Тестовое уведомление отправлено.", "Test notification sent.")
-                        "blocked" -> text.choose("Android блокирует тестовое уведомление. Проверьте разрешение и канал уведомлений.", "Android blocked the test notification. Check the permission and notification channel.")
-                        else -> text.choose("Не удалось отправить тестовое уведомление.", "Could not send the test notification.")
-                    }, style = MaterialTheme.typography.bodySmall)
-                }
-                TextButton(onClick = notificationSettings) { Text(text.systemSettings) }
-            }
-        }
-        item {
-            SettingsGroup(text.choose("Вид и фильтры", "Display and filters")) {
-                ToggleRow(text.choose("Компактный вид", "Compact view"), state.settings.compactView, model::setCompact)
-                ToggleRow(text.choose("Счётчик активных раздач", "Active giveaway count"), state.settings.badgeEnabled, model::setBadge)
-                SortSelector(state.settings.sortBy, text, model::setSort)
-                FilterSettings(FilterPreferences.fromJson(state.settings.filtersJson), text, model::setFilters)
-            }
-        }
-        item {
-            SettingsGroup(text.choose("История", "History")) {
-                ToggleRow(text.choose("Сохранять историю", "Keep history"), state.settings.historyEnabled) {
-                    model.setHistory(it, state.settings.historyRetentionDays)
-                }
-                NumberPreference(text.choose("Хранить историю, дней", "History retention, days"), state.settings.historyRetentionDays, 1..365, text) {
-                    model.setHistory(state.settings.historyEnabled, it)
-                }
-                Text(text.choose("При отключении завершённые записи удаляются после следующей проверки. Личные отметки хранятся отдельно.",
-                    "When disabled, ended records are removed after the next check. Personal marks are stored separately."), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { confirmClear = "history" }) { Text(text.choose("Очистить историю", "Clear history")) }
-            }
-        }
-        item {
-            SettingsGroup(text.choose("Личные отметки", "Personal marks")) {
-                PersonalMarks(state.marks, text, model::restoreMark)
-                if (state.marks.isNotEmpty()) TextButton(onClick = { confirmClear = "marks" }) { Text(text.choose("Снять все личные отметки", "Clear all personal marks")) }
-            }
-        }
-        item { BackupSection(state.language, model::exportBackup, model::importBackup) }
-        item {
-            SettingsGroup(text.choose("Состояние источников", "Source diagnostics")) {
-                Button(onClick = model::refresh, enabled = !refreshing && state.settings.trackFreeToKeep && state.selectedStores.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-                    Text(if (refreshing) text.refreshing else text.refresh)
-                }
-                OutlinedButton(onClick = {
-                    reportCopied = runCatching {
-                        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(
-                            ClipData.newPlainText("Free Games Watcher diagnostics", buildDiagnosticsReport(state, version, System.currentTimeMillis())),
-                        )
-                    }.isSuccess
-                }, modifier = Modifier.fillMaxWidth()) { Text(text.choose("Скопировать отчёт", "Copy report")) }
-                reportCopied?.let { copied -> Text(if (copied) text.choose("Отчёт скопирован в буфер обмена.", "Report copied to clipboard.")
-                    else text.choose("Не удалось скопировать отчёт.", "Could not copy the report."), style = MaterialTheme.typography.bodySmall) }
-                state.selectedStores.sorted().forEach { store ->
-                    SourceDiagnostics(store, state.checks.find { it.store == store }, text)
-                }
-                if (state.selectedStores.isEmpty()) Text(text.noStores)
-            }
-        }
-        item {
-            SettingsGroup(text.choose("Данные и приватность", "Data and privacy")) {
-                Text(text.choose(
-                    "История, отметки и настройки хранятся на устройстве. Приложение обращается к выбранным магазинам без входа в аккаунт.",
-                    "History, claimed status and settings stay on your device. The app contacts selected stores without signing in.",
-                ))
-                Text(text.choose(
-                    "Для Epic используются недельная лента и каталог. Если результат неполный, приложение обращается к EGData. Этот сервис получает IP-адрес, выбранную страну и параметры запроса.",
-                    "Epic checks use the weekly feed and catalog. If their result is incomplete, the app contacts EGData. This service receives your IP address, selected country and request parameters.",
-                ), style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
-            SettingsGroup(text.choose("О приложении", "About")) {
-                Text("Free Games Watcher · $version", style = MaterialTheme.typography.titleMedium)
-                Text(text.choose("Раздачи игр для ПК со скидкой 100%. Отметка «Уже забрал» устанавливается вручную после получения игры в магазине.",
-                    "Limited-time PC game giveaways with 100% discounts. Mark a game as claimed after adding it to your store account."))
-                TextButton(onClick = { uriHandler.openUri("https://github.com/Grim1313/Free-Games-Watcher-Android/releases") }) {
-                    Text(text.choose("Версии на GitHub", "Versions on GitHub"))
-                }
-                TextButton(onClick = { uriHandler.openUri("https://fgw.bz/") }) { Text(text.choose("Сайт и браузерное расширение", "Website and browser extension")) }
-                TextButton(onClick = { confirmClear = "settings" }) { Text(text.choose("Сбросить настройки", "Reset settings")) }
-            }
-        }
-        item { Box(Modifier.padding(bottom = 12.dp)) }
-    }
-    if (confirmClear != null) AlertDialog(
-        onDismissRequest = { confirmClear = null },
-        text = { Text(when (confirmClear) {
-            "history" -> text.choose("Удалить завершённые записи из истории?", "Delete ended records from history?")
-            "settings" -> text.choose("Вернуть настройки по умолчанию? Личные отметки и сохранённые игры останутся.", "Restore default settings? Personal marks and saved games will be kept.")
-            else -> text.choose("Снять все личные отметки? Игры снова смогут появляться в ленте и уведомлениях.", "Clear all personal marks? Games can appear in the feed and notifications again.")
-        }) },
-        confirmButton = { TextButton(onClick = {
-            when (confirmClear) {
-                "history" -> model.clearHistory()
-                "settings" -> model.resetSettings()
-                else -> model.clearMarks()
-            }
-            confirmClear = null
-        }) { Text(text.choose("Подтвердить", "Confirm")) } },
-        dismissButton = { TextButton(onClick = { confirmClear = null }) { Text(text.choose("Отмена", "Cancel")) } },
-    )
-    if (countryDialog) CountryDialog(text, state.country, { model.setCountry(it); countryDialog = false }, { countryDialog = false })
-    if (quietError) {
-        AlertDialog(
-            onDismissRequest = { quietError = false },
-            text = { Text(text.choose("Начало и окончание тихих часов должны различаться.", "Quiet hours must have different start and end times.")) },
-            confirmButton = { TextButton(onClick = { quietError = false }) { Text(text.okay) } },
-        )
-    }
-}
-
-@Composable
-internal fun SettingsGroup(title: String, content: @Composable () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            content()
+        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+            choices.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; select(key) }) }
         }
     }
 }
-
-@Composable
-internal fun ToggleRow(label: String, value: Boolean, change: (Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = value, role = Role.Switch, onValueChange = change),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = value, onCheckedChange = null)
-    }
-}
-
-@Composable
-private fun SourceDiagnostics(store: String, check: CheckStatus?, text: UiText) {
-    var expanded by rememberSaveable(store) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(storeName(store), style = MaterialTheme.typography.titleMedium)
-        Text(check?.lastSuccess?.let(text::lastSuccess) ?: text.firstCheck)
-        if (check != null) {
-            Text(when {
-                check.error == "partial" -> text.partial
-                check.error != null -> text.sourceError
-                !check.complete -> text.partial
-                else -> text.success
-            })
-            Text(text.choose("Запросов при последней проверке · ${check.requestCount}", "Requests in last check · ${check.requestCount}"), style = MaterialTheme.typography.bodySmall)
-            check.retryAt?.let { Text(text.choose("Повтор после ${text.time(it)}", "Retry after ${text.time(it)}"), style = MaterialTheme.typography.bodySmall) }
-            if (!check.details.isBlank() || check.error != null) {
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) text.choose("Скрыть подробности", "Hide details") else text.choose("Технические подробности", "Technical details"))
-                }
-                if (expanded) Text(
-                    listOfNotNull(
-                        check.error?.takeUnless { it == "failed" || it == "partial" },
-                        check.details.takeIf { it.isNotBlank() },
-                    ).joinToString("\n"),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        HorizontalDivider()
-    }
-}
-
-@Composable
-private fun CountryDialog(text: UiText, selected: String, choose: (String) -> Unit, dismiss: () -> Unit) {
-    var query by rememberSaveable { mutableStateOf("") }
-    val countries = remember(text.language) { Locale.getISOCountries().sortedBy(text::country) }
-    AlertDialog(
-        onDismissRequest = dismiss,
-        title = { Text(text.choose("Страна каталога", "Catalog country")) },
-        text = {
-            Column {
-                OutlinedTextField(query, { query = it }, singleLine = true, label = { Text(text.choose("Поиск страны или кода", "Search name or code")) })
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    items(countries.filter { it.contains(query, true) || text.country(it).contains(query, true) }) { code ->
-                        TextButton(onClick = { choose(code) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text(text.country(code) + " ($code)" + if (selected == code) " ✓" else "")
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = dismiss) { Text(text.close) } },
-    )
-}
-
-private fun clockTime(minute: Int) = "%02d:%02d".format(Locale.ROOT, minute / 60, minute % 60)

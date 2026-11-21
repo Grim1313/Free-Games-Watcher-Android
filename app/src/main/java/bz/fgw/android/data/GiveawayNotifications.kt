@@ -15,6 +15,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import bz.fgw.android.MainActivity
 import bz.fgw.android.R
+import bz.fgw.android.providers.StoreUrls
+import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -88,7 +90,14 @@ internal class GiveawayNotifications(private val context: Context) {
             offer.ratingValue != null -> "${offer.ratingValue}/5"
             else -> null
         }
-        val text = listOfNotNull(summary, offer.priceText?.takeIf { it.isNotBlank() }, rating).joinToString(" · ")
+        val ratingWithCount = rating?.let {
+            val count = offer.reviewCount?.takeIf { number -> number > 0 }
+            if (count == null) it else {
+                val formatted = NumberFormat.getIntegerInstance(Locale.forLanguageTag(language)).format(count)
+                if (ru) "$it · отзывов: $formatted" else "$it · $formatted reviews"
+            }
+        }
+        val text = listOfNotNull(summary, offer.priceText?.takeIf { it.isNotBlank() }, ratingWithCount).joinToString(" · ")
         val title = if (type == "reminder") {
             if (ru) "Скоро закончится · ${offer.title}" else "Ending soon · ${offer.title}"
         } else offer.title
@@ -100,6 +109,11 @@ internal class GiveawayNotifications(private val context: Context) {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
+        if (StoreUrls.isSafe(offer.store, offer.url)) {
+            val storeIntent = Intent(Intent.ACTION_VIEW, offer.url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
+            val openStore = PendingIntent.getActivity(context, 0, storeIntent, PendingIntent.FLAG_IMMUTABLE)
+            notification.addAction(0, if (ru) "В магазин" else "Open store", openStore)
+        }
         offer.end?.let { notification.setTimeoutAfter((it - now).coerceAtLeast(1)) }
         return try {
             manager.notify(offer.campaignId, if (type == "new") 1 else 2, notification.build())
