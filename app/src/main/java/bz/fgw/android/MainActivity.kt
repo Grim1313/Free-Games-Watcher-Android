@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.LocaleList
@@ -13,17 +14,17 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bz.fgw.android.data.StoredOffer
@@ -53,15 +54,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         alertKey = savedInstanceState?.getString("alertKey")
-        enableEdgeToEdge()
         setContent {
             val state by model.state.collectAsStateWithLifecycle()
             val dark = when (state.settings.theme) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
-            SideEffect {
-                WindowCompat.getInsetsController(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = !dark
-                    isAppearanceLightNavigationBars = !dark
-                }
+            LaunchedEffect(dark) {
+                val style = if (dark) SystemBarStyle.dark(Color.BLACK)
+                    else SystemBarStyle.light(Color.TRANSPARENT, Color.BLACK)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             val text = UiText(state.language)
             val alert = when (alertKey) {
