@@ -110,9 +110,7 @@ internal class GiveawayNotifications(private val context: Context) {
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
         if (StoreUrls.isSafe(offer.store, offer.url)) {
-            val storeIntent = Intent(Intent.ACTION_VIEW, offer.url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
-            val openStore = PendingIntent.getActivity(context, 0, storeIntent, PendingIntent.FLAG_IMMUTABLE)
-            notification.addAction(0, if (ru) "В магазин" else "Open store", openStore)
+            notification.addAction(0, if (ru) "В магазин" else "Open store", pendingIntent)
         }
         offer.end?.let { notification.setTimeoutAfter((it - now).coerceAtLeast(1)) }
         return try {
