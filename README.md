@@ -1,4 +1,7 @@
 # Free Games Watcher for Android
+![GitHub Release](https://img.shields.io/github/v/release/Grim1313/Free-Games-Watcher-Android)
+![GitHub Release Date](https://img.shields.io/github/release-date/Grim1313/Free-Games-Watcher-Android)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/Grim1313/Free-Games-Watcher-Android/total)
 
 [Русский](README.ru.md)
 
