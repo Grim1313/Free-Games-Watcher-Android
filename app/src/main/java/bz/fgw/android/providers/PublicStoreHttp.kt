@@ -21,12 +21,14 @@ class PublicStoreHttp(
         require(uri.scheme == "https" && uri.host in hosts && uri.port == -1 && uri.rawUserInfo == null)
         val connection = connect(uri)
         try {
-            connection.connectTimeout = 12_000
-            connection.readTimeout = 12_000
+            val epicPage = uri.host == "store.epicgames.com" && uri.path.startsWith("/en-US/p/")
+            val ratingLookup = epicPage || (uri.host == "api.egdata.app" && uri.path.endsWith("/polls"))
+            connection.connectTimeout = if (ratingLookup) 4_000 else 12_000
+            connection.readTimeout = connection.connectTimeout
             connection.useCaches = false
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("User-Agent", "FreeGamesWatcherAndroid/1.0")
-            val productPage = uri.host == "store.steampowered.com" &&
+            val productPage = epicPage || uri.host == "store.steampowered.com" &&
                 (uri.path.startsWith("/app/") || uri.path.startsWith("/sub/"))
             connection.setRequestProperty("Accept", if (productPage) "text/html" else "application/json")
             val code = connection.responseCode
@@ -34,6 +36,7 @@ class PublicStoreHttp(
                 throw StoreHttpException(code, retryDelay(connection.getHeaderField("Retry-After")))
             }
             val started = System.nanoTime()
+            val limit = if (ratingLookup) 4_000_000_000L else 30_000_000_000L
             return connection.inputStream.use { input ->
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
@@ -41,7 +44,7 @@ class PublicStoreHttp(
                     val count = input.read(buffer)
                     if (count < 0) break
                     if (output.size() + count > 4 * 1024 * 1024) throw IOException("Response exceeds 4 MiB")
-                    if (System.nanoTime() - started > 30_000_000_000L) throw IOException("Response timed out")
+                    if (System.nanoTime() - started > limit) throw IOException("Response timed out")
                     output.write(buffer, 0, count)
                 }
                 output.toString("UTF-8")

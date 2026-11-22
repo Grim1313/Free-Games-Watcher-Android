@@ -413,17 +413,22 @@ class RepositoryDeviceTest {
     @Test
     fun reminderUsesFreshCachedDeadlineWhenSearchOmitsTheGame(): Unit = runBlocking {
         var time = now
-        var result = StoreResult(listOf(offer(end = now + 4 * 60 * 60 * 1000L)))
+        var result = StoreResult(listOf(offer(end = now + 4 * 60 * 60 * 1000L).copy(ratingValue = 3.64, epicRatingCheckedAt = now)))
         val repository = repository({ result }, { time })
+        repository.setLanguage("ru")
         repository.setNotificationsEnabled(true)
         repository.refresh()
         assertEquals(1, database.watchDao().deliveredCount())
+        val rating = "Оценка игроков Epic: 3,6 из 5"
+        assertTrue(awaitNotifications(1).single().notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.contains(rating) == true)
+        assertEquals(3.64, repository.state.first().history.single().ratingValue!!, 0.0)
         notifications.cancelAll()
         time += 2 * 60 * 60 * 1000L
         result = StoreResult(emptyList())
         repository.refresh()
         val alert = awaitNotifications(1).single()
         assertEquals(REMINDERS_CHANNEL, alert.notification.channelId)
+        assertTrue(alert.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.contains(rating) == true)
         assertEquals(2, database.watchDao().deliveredCount())
         repository.refresh()
         assertEquals(2, database.watchDao().deliveredCount())
@@ -628,7 +633,7 @@ class RepositoryDeviceTest {
             old.version = 3
         }
         val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
-            .setDriver(AndroidSQLiteDriver()).addMigrations(MIGRATION_3_4)
+            .setDriver(AndroidSQLiteDriver()).addMigrations(MIGRATION_3_4, MIGRATION_4_5)
             .setQueryCoroutineContext(Dispatchers.IO).build()
         try {
             val dao = migrated.watchDao()
@@ -669,7 +674,7 @@ class RepositoryDeviceTest {
         }
         val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
         try {

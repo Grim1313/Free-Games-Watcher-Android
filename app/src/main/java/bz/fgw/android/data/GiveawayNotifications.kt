@@ -86,6 +86,10 @@ internal class GiveawayNotifications(private val context: Context) {
             if (ru) "$store · бесплатно до $deadline" else "$store · free until $deadline"
         }
         val rating = when {
+            offer.store == "epic" && offer.ratingValue != null -> {
+                val score = String.format(Locale.forLanguageTag(language), "%.1f", offer.ratingValue)
+                if (ru) "Оценка игроков Epic: $score из 5" else "Epic player rating: $score out of 5"
+            }
             offer.ratingPercent != null -> if (ru) "Положительные отзывы: ${offer.ratingPercent}%" else "${offer.ratingPercent}% positive reviews"
             offer.ratingValue != null -> "${offer.ratingValue}/5"
             else -> null

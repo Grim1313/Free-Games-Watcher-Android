@@ -373,7 +373,11 @@ private fun OfferDetails(offer: StoredOffer, text: UiText, now: Long, mark: Pers
             offer.start?.let { Text(text.choose("Начало · ${text.time(it)}", "Starts · ${text.time(it)}")) }
             Text(offer.end?.let(text::deadline) ?: text.noDeadline)
             formatOfferPrice(offer, text.locale)?.let { Text(text.choose("Обычная цена · $it", "Regular price · $it")) }
-            ratingLabel(offer, text)?.let { Text(it + (offer.reviewCount?.let { count -> text.choose(" · $count отзывов", " · $count reviews") } ?: "")) }
+            ratingLabel(offer, text)?.let { rating ->
+                val label = if (offer.store == "epic") text.choose("Оценка игроков Epic · $rating", "Epic player rating · $rating")
+                    else rating + (offer.reviewCount?.let { text.choose(" · $it отзывов", " · $it reviews") } ?: "")
+                Text(label)
+            }
             if (offer.genres.isNotEmpty()) Text(offer.genres.joinToString(" · "))
             if (offer.platforms.isNotEmpty()) Text(offer.platforms.joinToString(" · ") { when (it) { "windows" -> "Windows"; "mac" -> "macOS"; "linux" -> "Linux"; else -> it } })
             Text(text.country(offer.country), style = MaterialTheme.typography.bodySmall)

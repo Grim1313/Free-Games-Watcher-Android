@@ -6,6 +6,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackupCodecTest {
+    @Test fun epicScoresRoundTripInBrowserFormatWithoutReviewCounts() {
+        val epic = offer.copy(id = "epic:ns:game", url = "https://store.epicgames.com/en-US/p/game", store = "epic",
+            ratingPercent = null, reviewCount = null, ratingValue = 3.64, epicRatingCheckedAt = 1499)
+        val root = JSONObject(BackupCodec.encode(WatchSettings(), emptyList(), listOf(epic, offer), true))
+        val entry = root.getJSONArray("history").getJSONObject(0)
+        assertEquals(3.64, entry.getDouble("epicRating"), 0.0)
+        assertEquals(0, entry.getInt("gogRating"))
+        assertFalse(root.getJSONArray("history").getJSONObject(1).has("epicRating"))
+        entry.put("reviewTotal", 92)
+        val imported = BackupCodec.decode(root.toString()).history.first()
+        assertEquals(epic.ratingValue, imported.ratingValue)
+        assertEquals(1499L, imported.epicRatingCheckedAt)
+        assertNull(imported.reviewCount)
+        entry.put("epicRating", "3.64")
+        assertNull(BackupCodec.decode(root.toString()).history.first().ratingValue)
+    }
+
     private val offer = StoredOffer(
         "US:steam:app:123:campaign", "app:123", "Test game", "https://store.steampowered.com/app/123/",
         1000, 2000, "US", 1500, store = "steam", ratingPercent = 92, reviewCount = 120,

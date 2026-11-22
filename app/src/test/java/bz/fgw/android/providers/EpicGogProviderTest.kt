@@ -129,7 +129,7 @@ class EpicGogProviderTest {
         }
         val result = EpicProvider(http).fetch("US", emptyList(), now)
         assertTrue(result.complete)
-        assertEquals(3, result.requests)
+        assertEquals(3 + 2 * (result.offers.size + result.upcoming.size), result.requests)
         assertEquals(1, result.offers.size)
         assertTrue(result.details.contains("egdata: ok"))
     }
@@ -149,7 +149,7 @@ class EpicGogProviderTest {
         assertTrue(result.successful)
         assertEquals(1, result.offers.size)
         assertEquals(60_000L, result.retryAfterMillis)
-        assertEquals(4, result.requests)
+        assertEquals(4 + 2 * (result.offers.size + result.upcoming.size), result.requests)
     }
 
     @Test fun allSourceFailuresAreNotEmptySuccess() {
@@ -168,7 +168,63 @@ class EpicGogProviderTest {
             .fetch("US", emptyList(), weeklyNow)
         assertEquals(1, result.offers.size)
         assertEquals(weeklyNow - 86_400_000, result.offers.single().start)
-        assertEquals(2, result.requests)
+        assertEquals(6, result.requests)
+    }
+
+    @Test fun activeAndUpcomingUsePlayerScoresAndReuseTheirCache() {
+        val checkTime = Instant.parse("2026-11-19T12:00:00Z").toEpochMilli()
+        val urls = mutableListOf<String>()
+        val provider = EpicProvider(StoreHttp { url ->
+            urls += url
+            when {
+                "freeGamesPromotions" in url -> weekly()
+                "graphql" in url -> catalog().toString()
+                url.endsWith("/test-game") -> "<h2>Epic Player Ratings</h2><span>Captured from players in the Epic Games ecosystem.</span><span>3.7</span><p>Critic Reviews 92%</p>"
+                url.endsWith("/future-game") -> throw StoreHttpException(403, null)
+                url.endsWith("/offers/456/polls") -> """{"_id":"test-namespace","averageRating":3.64,"pollResult":[{"total":99}]}"""
+                else -> error("Unexpected request: $url")
+            }
+        })
+        val first = provider.fetch("US", emptyList(), checkTime)
+        assertTrue(first.complete)
+        assertEquals(3.7, first.offers.single().ratingValue!!, 0.0)
+        assertEquals(3.64, first.upcoming.single().ratingValue!!, 0.0)
+        assertNull(first.upcoming.single().reviewCount)
+        assertEquals(5, urls.size)
+        val second = provider.fetch("US", first.offers + first.upcoming, checkTime + 1)
+        assertEquals(first.upcoming, second.upcoming)
+        assertEquals(first.offers, second.offers)
+        assertEquals(7, urls.size)
+    }
+
+    @Test fun ignoresCriticsInvalidStarsAndMismatchedPolls() {
+        val game = StoreOffer("epic:ns:game", "Game", "https://store.epicgames.com/en-US/p/game")
+        for (poll in listOf("""{"_id":"other","averageRating":4.5}""", """{"_id":"ns","averageRating":"4.5"}""",
+            """{"_id":"ns","averageRating":6}""", """{"_id":"ns","averageRating":0}""")) {
+            val result = enrichEpicRatings(listOf(game), emptyList(), now, { true }) { url ->
+                if (url.endsWith("/polls")) poll else "<h2>Epic Player Ratings</h2><h2>Critic Reviews</h2><p>4.9</p>"
+            }.single()
+            assertNull(result.ratingValue)
+            assertEquals(now, result.epicRatingCheckedAt)
+        }
+    }
+
+    @Test fun checksOldestSixGamesAndPreservesScoresDuringOutages() {
+        val games = (1..8).map { StoreOffer("epic:ns:$it", "Game $it", "https://store.epicgames.com/en-US/p/game-$it") }
+        val offers = games + games.first().copy(id = "epic:ns:dlc", contentType = "dlc")
+        val previous = listOf(games.first().copy(ratingValue = 4.52, epicRatingCheckedAt = 1))
+        var calls = 0
+        val offline: (String) -> String = { calls++; throw IOException("offline") }
+        val first = enrichEpicRatings(offers, previous, now, { true }, offline)
+        assertEquals(12, calls)
+        assertEquals(4.52, first.first().ratingValue!!, 0.0)
+        val second = enrichEpicRatings(offers, first, now + 1, { true }, offline)
+        assertEquals(16, calls)
+        assertEquals(4.52, second.first().ratingValue!!, 0.0)
+        assertEquals(now + 1, second.first().epicRatingCheckedAt)
+        assertEquals(0L, second.last().epicRatingCheckedAt)
+        enrichEpicRatings(offers, second, now + 3 * 3_600_000L, { true }, offline)
+        assertEquals(28, calls)
     }
 
     @Test fun gogHomepageWinsEvenWhenProductPriceIsNotZero() {

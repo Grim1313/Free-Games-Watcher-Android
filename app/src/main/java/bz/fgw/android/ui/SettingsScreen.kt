@@ -307,8 +307,8 @@ internal fun SettingsScreen(
                         "History, claimed status and settings stay on your device. The app contacts selected stores without signing in.",
                     ))
                     Text(text.choose(
-                        "Для Epic используются недельная лента и каталог. Если результат неполный, приложение обращается к EGData. Этот сервис получает IP-адрес, выбранную страну и параметры запроса.",
-                        "Epic checks use the weekly feed and catalog. If their result is incomplete, the app contacts EGData. This service receives your IP address, selected country and request parameters.",
+                        "Приложение проверяет недельную ленту и каталог Epic, а оценку игроков берёт со страницы игры. При неполном ответе каталога EGData получает IP-адрес, страну и параметры поиска. Если на странице нет оценки, EGData получает IP-адрес и идентификатор предложения.",
+                        "The app checks the Epic weekly feed and catalog and reads player ratings from game pages. For incomplete catalog results, EGData receives your IP address, country and search parameters. When a page supplies no rating, EGData receives your IP address and the offer ID.",
                     ), style = MaterialTheme.typography.bodySmall)
                 }
             }

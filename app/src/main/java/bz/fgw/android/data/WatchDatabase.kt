@@ -68,6 +68,7 @@ data class StoredOffer(
     val upcoming: Boolean = false,
     val imported: Boolean = false,
     val inHistory: Boolean = true,
+    val epicRatingCheckedAt: Long = 0,
 ) {
     val gameKey: String get() = "$store:$id"
     fun activeAt(now: Long): Boolean = !ended && !imported && !upcoming && (start == null || start <= now) && (end == null || end > now)
@@ -217,7 +218,7 @@ interface WatchDao {
 @ColumnTypeConverters(StringListConverter::class)
 @Database(
     entities = [WatchSettings::class, StoredOffer::class, CheckStatus::class, NotificationEvent::class, PersonalMark::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class WatchDatabase : RoomDatabase() {
@@ -275,4 +276,8 @@ val MIGRATION_2_3 = Migration(2, 3) { db ->
 
 val MIGRATION_3_4 = Migration(3, 4) { db ->
     db.execSQL("ALTER TABLE settings ADD COLUMN theme TEXT NOT NULL DEFAULT 'system'")
+}
+
+val MIGRATION_4_5 = Migration(4, 5) { db ->
+    db.execSQL("ALTER TABLE offers ADD COLUMN epicRatingCheckedAt INTEGER NOT NULL DEFAULT 0")
 }

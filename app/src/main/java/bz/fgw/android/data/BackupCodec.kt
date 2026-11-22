@@ -1,6 +1,7 @@
 package bz.fgw.android.data
 
 import bz.fgw.android.providers.StoreUrls
+import bz.fgw.android.providers.epicPlayerScore
 import java.net.URI
 import java.time.Instant
 import java.util.Locale
@@ -129,8 +130,13 @@ object BackupCodec {
         val image = listOf("screenshotThumbnail", "screenshotFull", "headerImage", "capsuleImage")
             .firstNotNullOfOrNull { key -> item.optString(key).takeIf { StoreUrls.isCover(store, it) } }
         val percent = item.optInt("reviewPercent", -1).takeIf { store == "steam" && it in 0..100 }
-        val count = item.optInt(if (store == "gog") "gogRatingCount" else "reviewTotal", 0).takeIf { it > 0 }
-        val rating = item.optDouble("gogRating", 0.0).takeIf { store == "gog" && it > 0 && it <= 5 && count != null }
+        val count = item.optInt(if (store == "gog") "gogRatingCount" else "reviewTotal", 0).takeIf { store != "epic" && it > 0 }
+        val epicGame = store == "epic" && item.optString("contentType", "game") == "game"
+        val rating = when {
+            epicGame -> epicPlayerScore(item.opt("epicRating"))
+            store == "gog" && count != null -> item.optDouble("gogRating").takeIf { it > 0 && it <= 5 }
+            else -> null
+        }
         return StoredOffer(
             campaignId = item.optString("campaignId").ifEmpty { item.optString("fingerprint") }.ifEmpty { "$id|free-to-keep" },
             id = id, title = title, url = safeUrl(id, item.optString("claimUrl").ifEmpty { item.optString("url") }),
@@ -141,6 +147,7 @@ object BackupCodec {
             originalPrice = item.optLong("androidOriginalPrice", -1).takeIf { it >= 0 },
             currency = item.optString("androidCurrency").takeIf { Regex("[A-Z]{3}").matches(it) },
             ratingPercent = percent.takeIf { count != null }, reviewCount = count, ratingValue = rating,
+            epicRatingCheckedAt = if (epicGame) time(item, "epicRatingCheckedAt") else 0,
             contentType = item.optString("contentType", "unknown").takeIf { it in setOf("game", "dlc", "soundtrack", "demo", "tool", "package", "unknown") } ?: "unknown",
             genres = strings(item.optJSONArray("genres") ?: JSONArray()).take(50).map { it.take(100) },
             platforms = strings(item.optJSONArray("platforms") ?: JSONArray()).filter { it in setOf("windows", "mac", "linux") },
@@ -160,7 +167,13 @@ object BackupCodec {
         .put("basePriceFormatted", offer.priceText.orEmpty()).put("androidOriginalPrice", offer.originalPrice ?: JSONObject.NULL)
         .put("androidCurrency", offer.currency.orEmpty()).put("contentType", offer.contentType)
         .put("reviewPercent", offer.ratingPercent ?: 0).put("reviewTotal", if (offer.store == "steam") offer.reviewCount ?: 0 else 0)
-        .put("gogRating", offer.ratingValue ?: 0).put("gogRatingCount", if (offer.store == "gog") offer.reviewCount ?: 0 else 0)
+        .put("gogRating", if (offer.store == "gog") offer.ratingValue ?: 0 else 0).put("gogRatingCount", if (offer.store == "gog") offer.reviewCount ?: 0 else 0)
+        .apply {
+            if (offer.store == "epic") {
+                put("epicRating", offer.ratingValue ?: 0)
+                put("epicRatingCheckedAt", offer.epicRatingCheckedAt)
+            }
+        }
         .put("genres", JSONArray(offer.genres)).put("platforms", JSONArray(offer.platforms))
 
     private fun time(item: JSONObject, key: String): Long {

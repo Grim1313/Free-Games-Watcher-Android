@@ -18,6 +18,7 @@ data class StoreOffer(
     val genres: List<String> = emptyList(),
     val platforms: List<String> = emptyList(),
     val contentType: String = "game",
+    val epicRatingCheckedAt: Long = 0,
 )
 
 /** A partial response may contain verified offers. Only explicit evidence belongs in [ended]. */

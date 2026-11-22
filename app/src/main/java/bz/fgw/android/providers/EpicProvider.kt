@@ -99,10 +99,15 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
             }
         }
         val ended = (weekly.ended + direct.ended + mirror?.ended.orEmpty()) - combined.keys
-        return StoreResult(combined.values.toList(), weekly.complete && (direct.complete || mirror?.complete == true),
+        val upcoming = weekly.upcoming.filter { it.id !in combined }
+        val enriched = enrichEpicRatings(combined.values + upcoming, known, now, { System.nanoTime() < deadline }) { url ->
+            requests++
+            http.get(url)
+        }
+        return StoreResult(enriched.take(combined.size), weekly.complete && (direct.complete || mirror?.complete == true),
             ended, requests, diagnostics.joinToString(" · "), retryAfter,
             weekly.successful || direct.successful || mirror?.successful == true,
-            upcoming = weekly.upcoming.filter { it.id !in combined })
+            upcoming = enriched.drop(combined.size))
     }
 
     fun parseCatalog(root: JSONObject, country: String, now: Long): StoreResult {

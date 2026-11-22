@@ -331,7 +331,7 @@ class AppRepository internal constructor(
             val result = try {
                 providers.getValue(store).fetch(
                     settings.country,
-                    known.filter { !it.upcoming && !it.ended && (it.end == null || it.end > started) }
+                    known.filter { (store == "epic" || !it.upcoming) && !it.ended && (it.end == null || it.end > started) }
                         .map { it.toStoreOffer() },
                     started,
                 )
@@ -433,8 +433,9 @@ class AppRepository internal constructor(
                 currency = offer.currency ?: previous?.currency,
                 priceText = offer.priceText ?: previous?.priceText,
                 ratingPercent = offer.ratingPercent ?: previous?.ratingPercent,
-                reviewCount = offer.reviewCount ?: previous?.reviewCount,
-                ratingValue = offer.ratingValue ?: previous?.ratingValue,
+                reviewCount = if (store == "epic") null else offer.reviewCount ?: previous?.reviewCount,
+                ratingValue = if (store == "epic") offer.ratingValue else offer.ratingValue ?: previous?.ratingValue,
+                epicRatingCheckedAt = offer.epicRatingCheckedAt,
                 genres = offer.genres.ifEmpty { previous?.genres.orEmpty() },
                 platforms = offer.platforms.ifEmpty { previous?.platforms.orEmpty() },
                 contentType = offer.contentType, firstSeen = previous?.firstSeen ?: now,
@@ -500,5 +501,5 @@ class AppRepository internal constructor(
 
 private fun StoredOffer.toStoreOffer() = StoreOffer(
     id, title, url, start, end, imageUrl, originalPrice, currency, priceText,
-    ratingPercent, reviewCount, ratingValue, genres, platforms, contentType,
+    ratingPercent, reviewCount, ratingValue, genres, platforms, contentType, epicRatingCheckedAt,
 )
