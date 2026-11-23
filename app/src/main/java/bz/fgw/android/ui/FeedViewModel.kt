@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import bz.fgw.android.data.BackupData
+import bz.fgw.android.data.CheckTrigger
 import bz.fgw.android.data.FilterPreferences
 import bz.fgw.android.data.exportBackup
 import bz.fgw.android.data.importBackup
@@ -12,6 +13,8 @@ import bz.fgw.android.data.StoredOffer
 import bz.fgw.android.data.MarkUndo
 import bz.fgw.android.watchRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,14 +29,22 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     val state = repository.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FeedState())
     private val refreshing = MutableStateFlow(false)
     val isRefreshing = refreshing.asStateFlow()
+    val loggingEnabled = repository.journal.enabled
+    fun setLogging(enabled: Boolean) = repository.journal.setEnabled(enabled)
+    suspend fun detailedReport(version: String): String = withContext(Dispatchers.IO) {
+        buildDiagnosticsReport(repository.state.first(), version, System.currentTimeMillis()) + "\n" + repository.journal.snapshot()
+    }
     private val failed = MutableStateFlow(false)
     val actionFailed = failed.asStateFlow()
     private var activeChecks = 0
     private val storeChanges = Mutex()
 
-    fun refresh() {
+    fun refresh() = refresh(CheckTrigger.MANUAL)
+    fun checkDiagnostics() = refresh(CheckTrigger.DIAGNOSTIC)
+
+    private fun refresh(trigger: CheckTrigger) {
         if (refreshing.value) return
-        save { scan() }
+        save { scan(trigger) }
     }
 
     fun setCountry(country: String) = save { repository.setCountry(country); scan() }
@@ -73,11 +84,11 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     fun setClaimed(offer: StoredOffer, claimed: Boolean) = save { repository.setClaimed(offer, claimed) }
     fun dismissMessage() { failed.value = false }
 
-    private suspend fun scan() {
+    private suspend fun scan(trigger: CheckTrigger = CheckTrigger.MANUAL) {
         activeChecks++
         refreshing.value = true
         try {
-            repository.refresh()
+            repository.refresh(trigger = trigger)
         } finally {
             activeChecks--
             refreshing.value = activeChecks > 0

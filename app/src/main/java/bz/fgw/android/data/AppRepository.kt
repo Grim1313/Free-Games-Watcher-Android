@@ -43,6 +43,7 @@ data class FeedState(
 }
 
 enum class ScanOutcome { SUCCESS, RETRY, STALE }
+enum class CheckTrigger { MANUAL, BACKGROUND, DIAGNOSTIC }
 
 data class MarkUndo(
     val gameKey: String,
@@ -54,13 +55,12 @@ data class MarkUndo(
 class AppRepository internal constructor(
     private val context: Context,
     internal val database: WatchDatabase,
-    private val providers: Map<String, StoreProvider> = mapOf(
-        "epic" to EpicProvider(), "steam" to SteamProvider(), "gog" to GogProvider(),
-    ),
+    private val providers: Map<String, StoreProvider>? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
 ) {
     internal val dao = database.watchDao()
+    internal val journal = CheckJournal(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val scanMutex = Mutex()
     private val settingsMutex = Mutex()
@@ -297,19 +297,34 @@ class AppRepository internal constructor(
 
     suspend fun findOffer(campaignId: String): StoredOffer? = dao.offer(campaignId)
 
-    suspend fun refresh(backgroundRetry: Boolean = false): ScanOutcome {
+    suspend fun refresh(backgroundRetry: Boolean = false, trigger: CheckTrigger = CheckTrigger.MANUAL): ScanOutcome {
         dao.initialize(WatchSettings())
         val settings = dao.settings()
+        if (trigger == CheckTrigger.DIAGNOSTIC && journal.enabled.value) {
+            return withContext(Dispatchers.IO) { scanMutex.withLock { scan(settings, false, trigger) } }
+        }
         val scan = synchronized(activeScans) {
             activeScans.entries.removeAll { it.value.isCompleted }
             activeScans[settings.revision]?.takeIf { it.isActive } ?: scope.async {
-                scanMutex.withLock { scan(settings, backgroundRetry) }
+                scanMutex.withLock { scan(settings, backgroundRetry, trigger) }
             }.also { activeScans[settings.revision] = it }
         }
         return scan.await()
     }
 
-    private suspend fun scan(settings: WatchSettings, backgroundRetry: Boolean): ScanOutcome {
+    private suspend fun scan(settings: WatchSettings, backgroundRetry: Boolean, trigger: CheckTrigger): ScanOutcome {
+        val log = if (journal.enabled.value) journal::record else null
+        log?.invoke("BEGIN $trigger country=${settings.country} stores=${settings.stores} tracking=${settings.trackFreeToKeep} revision=${settings.revision} workerRetry=$backgroundRetry")
+        return try {
+            checkStores(settings, backgroundRetry, trigger == CheckTrigger.DIAGNOSTIC && log != null, log)
+                .also { log?.invoke("END $trigger $it") }
+        } catch (e: Exception) {
+            log?.invoke("END $trigger ${e.javaClass.simpleName}: ${e.message}")
+            throw e
+        }
+    }
+
+    private suspend fun checkStores(settings: WatchSettings, backgroundRetry: Boolean, retryMissing: Boolean, log: ((String) -> Unit)?): ScanOutcome {
         if (dao.settings().revision != settings.revision) return ScanOutcome.STALE
         if (!settings.trackFreeToKeep) return ScanOutcome.SUCCESS
         var retry = false
@@ -317,19 +332,32 @@ class AppRepository internal constructor(
             if (dao.settings().revision != settings.revision) return ScanOutcome.STALE
             val started = clock()
             val previous = dao.check(settings.country, store)
+            log?.invoke("STORE $store start")
             if (backgroundRetry && previous?.lastSuccess != null && previous.error != "failed" && previous.retryAt == null &&
                 previous.lastSuccess >= previous.lastAttempt && started - previous.lastSuccess < 15 * 60 * 1000L) {
+                log?.invoke("STORE $store skipped: recent successful check")
                 deliverPending(settings.revision, store)
                 continue
             }
-            if ((previous?.retryAt ?: 0) > started) {
+            val retryAt = previous?.retryAt
+            if (retryAt != null && retryAt > started) {
                 retry = true
+                log?.invoke("STORE $store skipped: retry at ${Instant.ofEpochMilli(retryAt)}")
                 deliverPending(settings.revision, store)
                 continue
             }
             val known = dao.knownOffers(store, settings.country)
             val result = try {
-                providers.getValue(store).fetch(
+                val provider = providers?.getValue(store) ?: run {
+                    val http = loggedStoreHttp(log)
+                    when (store) {
+                        "epic" -> EpicProvider(http, log, retryMissing)
+                        "steam" -> SteamProvider(http)
+                        "gog" -> GogProvider(http)
+                        else -> error("Unknown store $store")
+                    }
+                }
+                provider.fetch(
                     settings.country,
                     known.filter { (store == "epic" || !it.upcoming) && !it.ended && (it.end == null || it.end > started) }
                         .map { it.toStoreOffer() },
@@ -393,6 +421,12 @@ class AppRepository internal constructor(
                 dao.pruneHistory(confirmed, keepSince)
                 dao.pruneOrphanEvents()
                 true
+            }
+            log?.invoke("STORE $store accepted=$accepted successful=${result.successful} complete=${result.complete} requests=${result.requests} active=${result.offers.size} upcoming=${result.upcoming.size} ended=${result.ended.size} retryAfterMs=${result.retryAfterMillis} details=${result.details}")
+            if (log != null) {
+                for (offer in result.offers) log("Active ${offer.id} ${offer.title} type=${offer.contentType} rating=${offer.ratingValue ?: offer.ratingPercent} end=${offer.end}")
+                for (offer in result.upcoming) log("Upcoming ${offer.id} ${offer.title} type=${offer.contentType} rating=${offer.ratingValue} start=${offer.start}")
+                for (id in result.ended) log("Ended $id")
             }
             if (!accepted) return ScanOutcome.STALE
             if (!result.successful || result.retryAfterMillis != null) retry = true

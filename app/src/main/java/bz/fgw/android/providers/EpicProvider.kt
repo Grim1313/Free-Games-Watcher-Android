@@ -12,7 +12,11 @@ import java.time.Instant
 import java.util.Locale
 
 /** Regional weekly feed, Browse catalog, then EGData when Browse is incomplete. */
-class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvider {
+class EpicProvider(
+    private val http: StoreHttp = PublicStoreHttp(),
+    private val log: ((String) -> Unit)? = null,
+    private val retryMissingRatings: Boolean = false,
+) : StoreProvider {
     override fun fetch(country: String, known: List<StoreOffer>, now: Long): StoreResult {
         val region = country.uppercase(Locale.ROOT)
         require(region.matches(Regex("[A-Z]{2}")))
@@ -100,7 +104,7 @@ class EpicProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvi
         }
         val ended = (weekly.ended + direct.ended + mirror?.ended.orEmpty()) - combined.keys
         val upcoming = weekly.upcoming.filter { it.id !in combined }
-        val enriched = enrichEpicRatings(combined.values + upcoming, known, now, { System.nanoTime() < deadline }) { url ->
+        val enriched = enrichEpicRatings(combined.values + upcoming, known, now, { System.nanoTime() < deadline }, log, retryMissingRatings) { url ->
             requests++
             http.get(url)
         }

@@ -101,6 +101,35 @@ class RepositoryDeviceTest {
         now - 60_000, end,
     )
 
+    @Test fun checkJournalIsOptInBoundedAndReadableAfterStopping() {
+        val directory = java.nio.file.Files.createTempDirectory(context.cacheDir.toPath(), "journal-test").toFile()
+        val isolated = object : ContextWrapper(context) {
+            override fun getNoBackupFilesDir() = directory
+            override fun getSharedPreferences(name: String, mode: Int) = context.getSharedPreferences(directory.name, mode)
+        }
+        try {
+            val journal = CheckJournal(isolated)
+            assertFalse(journal.enabled.value)
+            journal.record("disabled")
+            assertTrue(directory.listFiles()!!.isEmpty())
+            journal.setEnabled(true)
+            repeat(600) { journal.record("row-$it " + "x".repeat(2100)) }
+            journal.setEnabled(false)
+            journal.record("after-stop")
+            val saved = CheckJournal(isolated)
+            assertFalse(saved.enabled.value)
+            val output = saved.snapshot()
+            assertTrue(output.contains("row-599 "))
+            assertFalse(output.contains("row-0 "))
+            assertFalse(output.contains("after-stop"))
+            assertTrue(directory.listFiles()!!.sumOf { it.length() } <= 1024 * 1024L)
+        } finally {
+            directory.listFiles()?.forEach { it.delete() }
+            context.deleteSharedPreferences(directory.name)
+            directory.delete()
+        }
+    }
+
     @Test
     fun workerPersistsAndNotifiesExactlyOnceAcrossDeadlineExtension() = runBlocking {
         var end = now + 86_400_000

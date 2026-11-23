@@ -218,16 +218,34 @@ class EpicGogProviderTest {
         val previous = listOf(games.first().copy(ratingValue = 4.52, epicRatingCheckedAt = 1))
         var calls = 0
         val offline: (String) -> String = { calls++; throw IOException("offline") }
-        val first = enrichEpicRatings(offers, previous, now, { true }, offline)
+        val first = enrichEpicRatings(offers, previous, now, { true }, request = offline)
         assertEquals(12, calls)
         assertEquals(4.52, first.first().ratingValue!!, 0.0)
-        val second = enrichEpicRatings(offers, first, now + 1, { true }, offline)
+        val second = enrichEpicRatings(offers, first, now + 1, { true }, request = offline)
         assertEquals(16, calls)
         assertEquals(4.52, second.first().ratingValue!!, 0.0)
         assertEquals(now + 1, second.first().epicRatingCheckedAt)
         assertEquals(0L, second.last().epicRatingCheckedAt)
-        enrichEpicRatings(offers, second, now + 3 * 3_600_000L, { true }, offline)
+        enrichEpicRatings(offers, second, now + 3 * 3_600_000L, { true }, request = offline)
         assertEquals(28, calls)
+    }
+
+    @Test fun diagnosticCheckRetriesMissingRatingAndExplainsBothSources() {
+        val game = StoreOffer("epic:ns:game", "Example", "https://store.epicgames.com/en-US/p/game")
+        val known = listOf(game.copy(epicRatingCheckedAt = now - 1000))
+        val lines = mutableListOf<String>()
+        val request: (String) -> String = {
+            if ("getProductResult" in it) throw StoreHttpException(403, null)
+            """{"_id":"other","averageRating":4.5}"""
+        }
+        val cached = enrichEpicRatings(listOf(game), known, now, { true }, lines::add, request = { error("Cache should be used") })
+        assertNull(cached.single().ratingValue)
+        assertTrue(lines.any { "decision=cache" in it })
+        val result = enrichEpicRatings(listOf(game), known, now, { true }, lines::add, true, request)
+        assertNull(result.single().ratingValue)
+        assertTrue(lines.any { "403" in it && game.id in it })
+        assertTrue(lines.any { "matches=false" in it })
+        assertTrue(lines.any { "source=none" in it })
     }
 
     @Test fun gogHomepageWinsEvenWhenProductPriceIsNotZero() {

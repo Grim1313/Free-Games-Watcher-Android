@@ -12,8 +12,8 @@ android {
         applicationId = "bz.fgw.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.0.2"
+        versionCode = 9
+        versionName = "1.0.3"
         testInstrumentationRunner = "bz.fgw.android.BetaTestRunner"
     }
     buildTypes {

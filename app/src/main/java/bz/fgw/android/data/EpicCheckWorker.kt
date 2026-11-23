@@ -11,7 +11,7 @@ class EpicCheckWorker(
 ) : CoroutineWorker(context, parameters) {
     internal var repository: AppRepository = context.watchRepository
 
-    override suspend fun doWork(): Result = when (repository.refresh(backgroundRetry = runAttemptCount > 0)) {
+    override suspend fun doWork(): Result = when (repository.refresh(backgroundRetry = runAttemptCount > 0, trigger = CheckTrigger.BACKGROUND)) {
         ScanOutcome.SUCCESS, ScanOutcome.STALE -> Result.success()
         ScanOutcome.RETRY -> if (runAttemptCount < 3) Result.retry() else Result.success()
     }

@@ -41,7 +41,7 @@ internal fun settingsDestinations(text: UiText, version: String) = listOf(
         text.choose("резервная копия бэкап JSON восстановить", "backup JSON restore")),
     SettingsDestination("help", text.choose("Справка", "Help"), text.choose("Начало работы · значки · действия", "Getting started · icons · actions"), "help"),
     SettingsDestination("diagnostics", text.choose("Диагностика источников", "Source diagnostics"), text.choose("Последние проверки · ошибки · отчёт", "Recent checks · errors · report"), "refresh",
-        text.choose("состояние источник запросы скопировать", "status requests copy report")),
+        text.choose("состояние источник запросы скопировать журнал лог экспорт оценка Epic", "status requests copy report log export Epic ratings")),
     SettingsDestination("privacy", text.choose("Данные и приватность", "Data and privacy"), text.choose("Хранение и обращения к сервисам", "Storage and service requests"), "info",
         text.choose("конфиденциальность EGData", "privacy EGData")),
     SettingsDestination("about", text.choose("О приложении", "About"), "Free Games Watcher · $version", "info",

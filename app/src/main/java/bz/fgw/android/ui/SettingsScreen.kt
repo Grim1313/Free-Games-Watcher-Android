@@ -6,6 +6,9 @@ import android.content.ClipboardManager
 import android.content.res.Configuration
 import android.view.ContextThemeWrapper
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +55,8 @@ import bz.fgw.android.data.FeedState
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun SettingsScreen(
@@ -79,6 +84,20 @@ internal fun SettingsScreen(
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }
     val uriHandler = LocalUriHandler.current
+    val logging by model.loggingEnabled.collectAsStateWithLifecycle()
+    var logSaved by remember { mutableStateOf<Boolean?>(null) }
+    val exportLog = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val report = model.detailedReport(version)
+                withContext(Dispatchers.IO) {
+                    requireNotNull(context.contentResolver.openOutputStream(uri, "wt")).bufferedWriter(Charsets.UTF_8).use { it.write(report) }
+                }
+                logSaved = true
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { logSaved = false }
+        }
+    }
     val configuration = LocalConfiguration.current
     val pickTime: (Int, (Int) -> Unit) -> Unit = { minute, save ->
         val localizedContext = ContextThemeWrapper(context, android.R.style.Theme_DeviceDefault_Dialog_Alert).apply {
@@ -282,16 +301,26 @@ internal fun SettingsScreen(
             if (page == "help") item { HelpSettings(text) }
             if (page == "diagnostics") item {
                 SettingsGroup("") {
-                    Button(onClick = model::refresh, enabled = !refreshing && state.settings.trackFreeToKeep && state.selectedStores.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+                    ToggleRow(text.choose("Записывать журнал проверок", "Record check log"), logging, model::setLogging)
+                    Text(text.choose(
+                        "Журнал хранится на устройстве (до 1 МиБ). При включённой записи проверка с этого экрана повторно запросит недостающие оценки Epic. После выключения накопленный журнал можно сохранить.",
+                        "Up to 1 MiB is kept on this device. With recording on, checking from this screen retries missing Epic ratings. You can save the log after turning recording off.",
+                    ), style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = model::checkDiagnostics, enabled = !refreshing && state.settings.trackFreeToKeep && state.selectedStores.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                         Text(if (refreshing) text.refreshing else text.refresh)
                     }
+                    OutlinedButton(onClick = {
+                        logSaved = null
+                        exportLog.launch("Free-Games-Watcher-checks-${java.time.LocalDate.now()}.txt")
+                    }, modifier = Modifier.fillMaxWidth()) { Text(text.choose("Сохранить журнал (.txt)", "Save check log (.txt)")) }
+                    logSaved?.let { Text(if (it) text.choose("Журнал сохранён.", "Check log saved.") else text.choose("Не удалось сохранить журнал.", "Could not save the log.")) }
                     OutlinedButton(onClick = {
                         reportCopied = runCatching {
                             context.getSystemService(ClipboardManager::class.java).setPrimaryClip(
                                 ClipData.newPlainText("Free Games Watcher diagnostics", buildDiagnosticsReport(state, version, System.currentTimeMillis())),
                             )
                         }.isSuccess
-                    }, modifier = Modifier.fillMaxWidth()) { Text(text.choose("Скопировать отчёт", "Copy report")) }
+                    }, modifier = Modifier.fillMaxWidth()) { Text(text.choose("Скопировать сводку", "Copy summary")) }
                     reportCopied?.let { copied -> Text(if (copied) text.choose("Отчёт скопирован в буфер обмена.", "Report copied to clipboard.")
                         else text.choose("Не удалось скопировать отчёт.", "Could not copy the report."), style = MaterialTheme.typography.bodySmall) }
                     state.selectedStores.sorted().forEach { store ->
