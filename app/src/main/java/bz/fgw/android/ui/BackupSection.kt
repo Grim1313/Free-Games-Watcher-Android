@@ -103,8 +103,8 @@ fun BackupSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text.choose("Перенос данных", "Data transfer"), style = MaterialTheme.typography.titleMedium)
-        Text(text.choose("Перенос настроек, личных отметок и истории между Android и браузерным расширением.",
-            "Transfer settings, personal marks and history between Android and the browser extension."), style = MaterialTheme.typography.bodySmall)
+        Text(text.choose("Настройки, личные отметки и история сохраняются в файл JSON для переноса между Android и браузерным расширением.",
+            "Settings, personal marks and history are saved in a JSON file for transfer between Android and the browser extension."), style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = includeExportHistory, enabled = !busy, onCheckedChange = { includeExportHistory = it })
             Text(text.choose("Включить историю в копию", "Include history in backup"))

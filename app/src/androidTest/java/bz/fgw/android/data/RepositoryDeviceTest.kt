@@ -399,6 +399,44 @@ class RepositoryDeviceTest {
     }
 
     @Test
+    fun countryChangesShowOneHistoryEntryAndPreserveRegionalDataAndMarks() = runBlocking {
+        var time = now
+        val repository = repository({ StoreResult(listOf(offer())) }, { time })
+        repository.refresh()
+        val original = repository.state.first().offers.single()
+        repository.setClaimed(original, true)
+        database.watchDao().enqueue(listOf(NotificationEvent(original.campaignId, delivered = true, deliveredAt = time)))
+        for (country in listOf("KZ", "RU")) {
+            time += 1_000
+            repository.setCountry(country)
+            repository.refresh()
+            val state = repository.state.first()
+            assertEquals(1, state.history.size)
+            assertEquals(country, state.history.single().country)
+            assertEquals(original.firstSeen, state.history.single().firstSeen)
+            assertTrue(original.gameKey in state.claimedIds)
+        }
+        assertEquals(3, database.watchDao().allOffers().size)
+        assertEquals(1, database.watchDao().deliveredCount())
+        val recreated = repository({ StoreResult(listOf(offer())) }, { time })
+        assertEquals(1, recreated.state.first().history.size)
+        assertTrue(original.gameKey in recreated.state.first().claimedIds)
+        recreated.act(original, "hide")
+        val hiddenState = recreated.state.first()
+        val hidden = hiddenState.history.single()
+        assertEquals(original.campaignId, hidden.campaignId)
+        assertEquals(hidden.campaignId, hiddenState.marks.single().hiddenCampaign)
+        val restore = recreated.act(hidden, "restore")!!
+        assertTrue(recreated.state.first().marks.isEmpty())
+        assertEquals("RU", recreated.state.first().history.single().country)
+        assertTrue(recreated.undoAction(hidden, restore))
+        assertEquals(original.campaignId, recreated.state.first().history.single().campaignId)
+        recreated.clearHistory()
+        assertTrue(recreated.state.first().history.isEmpty())
+        assertTrue(original.gameKey in recreated.state.first().claimedIds)
+    }
+
+    @Test
     fun unknownDeadlineKeepsCampaignAndClaimAcrossRepeatAndNewCampaignAfterEnd() = runBlocking {
         var result = StoreResult(listOf(offer().copy(start = null, end = null)))
         val repository = repository({ result })
@@ -662,7 +700,7 @@ class RepositoryDeviceTest {
             old.version = 3
         }
         val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
-            .setDriver(AndroidSQLiteDriver()).addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+            .setDriver(AndroidSQLiteDriver()).addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .setQueryCoroutineContext(Dispatchers.IO).build()
         try {
             val dao = migrated.watchDao()
@@ -672,7 +710,6 @@ class RepositoryDeviceTest {
             assertEquals(30, settings.intervalMinutes)
             assertEquals(5, settings.reminderHours)
             assertEquals("title", settings.sortBy)
-            assertTrue(settings.compactView)
             assertTrue(settings.quietHoursEnabled)
             assertTrue(dao.mark("steam:app:123")!!.claimed)
         } finally {
@@ -703,7 +740,7 @@ class RepositoryDeviceTest {
         }
         val migrated = Room.databaseBuilder<WatchDatabase>(context, name)
             .setDriver(AndroidSQLiteDriver())
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()
         try {

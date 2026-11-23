@@ -77,7 +77,9 @@ class AppRepository internal constructor(
             settings = settings,
             offers = regional.filter { !it.upcoming && !it.imported },
             upcoming = regional.filter { it.upcoming && !it.ended && !it.imported },
-            history = if (settings.historyEnabled) offers.filter { !it.upcoming && it.inHistory } else emptyList(),
+            history = if (settings.historyEnabled) {
+                offerHistory(offers, settings.country, marks.associate { it.gameKey to it.hiddenCampaign })
+            } else emptyList(),
             marks = marks,
             checks = checks.filter { it.country == settings.country && it.store in settings.selectedStores() },
         )
@@ -142,7 +144,6 @@ class AppRepository internal constructor(
         changeSettings { it.copy(sortBy = sort) }
     }
 
-    suspend fun setCompact(compact: Boolean) = changeSettings { it.copy(compactView = compact) }
 
     suspend fun setTheme(theme: String) {
         require(theme in setOf("system", "light", "dark"))

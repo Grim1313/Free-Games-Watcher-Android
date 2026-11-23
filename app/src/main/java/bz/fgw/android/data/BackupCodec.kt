@@ -91,7 +91,7 @@ object BackupCodec {
             intervalMinutes = interval, intervalHours = (interval / 60).coerceAtLeast(1),
             remindersEnabled = source.optBoolean("remindersEnabled", true), reminderHours = source.optInt("reminderHours", 3).coerceIn(1, 72),
             quietHoursEnabled = source.optBoolean("quietHoursEnabled"), quietStartMinute = minute(source.optString("quietHoursStart"), 23 * 60),
-            quietEndMinute = minute(source.optString("quietHoursEnd"), 8 * 60), compactView = source.optBoolean("compactView"),
+            quietEndMinute = minute(source.optString("quietHoursEnd"), 8 * 60),
             sortBy = source.optString("sortBy", "ending").takeIf { it in setOf("ending", "newest", "rating", "title") } ?: "ending",
             historyEnabled = source.optBoolean("historyEnabled", true), historyRetentionDays = source.optInt("historyRetentionDays", 30).coerceIn(1, 365),
             badgeEnabled = source.optBoolean("badgeEnabled", true),
@@ -108,7 +108,7 @@ object BackupCodec {
         .put("checkIntervalMinutes", settings.intervalMinutes).put("remindersEnabled", settings.remindersEnabled)
         .put("reminderHours", settings.reminderHours).put("quietHoursEnabled", settings.quietHoursEnabled)
         .put("quietHoursStart", clockText(settings.quietStartMinute)).put("quietHoursEnd", clockText(settings.quietEndMinute))
-        .put("compactView", settings.compactView).put("sortBy", settings.sortBy)
+        .put("sortBy", settings.sortBy)
         .put("historyEnabled", settings.historyEnabled).put("historyRetentionDays", settings.historyRetentionDays)
         .put("trackFreeToKeep", settings.trackFreeToKeep).put("badgeEnabled", settings.badgeEnabled)
         .put("notifiedRetentionDays", settings.notifiedRetentionDays).put("renotifyAfterRetention", settings.renotifyAfterRetention)

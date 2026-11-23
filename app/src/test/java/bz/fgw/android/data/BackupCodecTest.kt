@@ -31,11 +31,15 @@ class BackupCodecTest {
 
     @Test fun roundTripPreservesSettingsMarksAndRepeatedCampaigns() {
         val settings = WatchSettings(country = "DE", stores = "steam,gog", language = "en", intervalMinutes = 30,
-            compactView = true, reminderHours = 5, theme = "dark", filtersJson = FilterPreferences(minRating = 85, blockedAppIds = setOf("456")).toJson())
+            reminderHours = 5, theme = "dark", filtersJson = FilterPreferences(minRating = 85, blockedAppIds = setOf("456")).toJson())
         val mark = PersonalMark(offer.gameKey, offer.title, offer.url, claimed = true, hiddenCampaign = offer.campaignId, snoozedUntil = 9000, updatedAt = 2000)
         val second = offer.copy(campaignId = "second", start = 3000, end = 4000)
         val encoded = BackupCodec.encode(settings, listOf(mark), listOf(offer, second), true)
         val parsed = BackupCodec.decode(encoded)
+        val legacyBackup = JSONObject(encoded)
+        assertFalse(legacyBackup.getJSONObject("settings").has("compactView"))
+        legacyBackup.getJSONObject("settings").put("compactView", true)
+        assertEquals(parsed.settings, BackupCodec.decode(legacyBackup.toString()).settings)
         assertEquals(30, parsed.settings.intervalMinutes)
         assertEquals("DE", parsed.settings.country)
         assertEquals("dark", parsed.settings.theme)

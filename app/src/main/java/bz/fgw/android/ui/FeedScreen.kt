@@ -1,9 +1,11 @@
 package bz.fgw.android.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,9 +19,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +90,7 @@ fun FeedScreen(
     var searching by rememberSaveable(tab) { mutableStateOf(false) }
     var storeFilter by rememberSaveable(tab) { mutableStateOf("all") }
     var historyFilter by rememberSaveable(tab) { mutableStateOf("all") }
+    var collapsedStores by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -164,7 +173,7 @@ fun FeedScreen(
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
                     when {
-                        detail != null -> OfferDetails(detail, text, now, marks[detail.gameKey], !state.settings.compactView, closeDetail, onOpenOffer, action)
+                        detail != null -> OfferDetails(detail, text, now, marks[detail.gameKey], closeDetail, onOpenOffer, action)
                         tab == "settings" -> SettingsScreen(state, text, model, notificationsAvailable, refreshing, onNotificationsChanged, onOpenNotificationSettings, initialPage = settingsPage)
                         else -> {
                             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -188,14 +197,28 @@ fun FeedScreen(
                             }
                             if (searching) OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 singleLine = true, label = { Text(text.choose("Название или ID", "Title or ID")) })
-                            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                if (tab != "upcoming") Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf("all", "steam", "epic", "gog").forEach { store ->
-                                        FilterChip(selected = storeFilter == store, onClick = { storeFilter = store },
-                                            label = { Text(if (store == "all") text.choose("Все", "All") else if (store == "epic") "Epic" else storeName(store), style = MaterialTheme.typography.labelSmall) })
-                                    }
+                            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                val showSortLabel = maxWidth >= 344.dp && LocalDensity.current.fontScale <= 1.15f
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    if (tab != "upcoming") Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        listOf("all", "steam", "epic", "gog").forEach { store ->
+                                            val selected = storeFilter == store
+                                            OutlinedButton(onClick = { storeFilter = store },
+                                                modifier = Modifier.widthIn(min = 48.dp).semantics { this.selected = selected },
+                                                contentPadding = PaddingValues(horizontal = 8.dp), shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                                                    contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                ),
+                                                border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                            ) {
+                                                Text(if (store == "all") text.choose("Все", "All") else if (store == "epic") "Epic" else storeName(store),
+                                                    style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                            }
+                                        }
+                                    } else Spacer(Modifier.weight(1f))
+                                    SortSelector(state.settings.sortBy, text, model::setSort, compact = true, showCompactLabel = showSortLabel)
                                 }
-                                SortSelector(state.settings.sortBy, text, model::setSort, compact = true)
                             }
                             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
                                 val incomplete = state.checks.filter {
@@ -235,9 +258,15 @@ fun FeedScreen(
                                 listOf("steam", "epic", "gog").forEach { store ->
                                     val group = sortOffers(offers.filter { it.store == store }, state.settings.sortBy)
                                     if (group.isNotEmpty()) {
-                                        item(key = "store-$store") { StoreHeader(store, group.size) }
-                                        items(group, key = { it.campaignId }) { offer ->
-                                            CatalogOffer(offer, text, now, marks[offer.gameKey], !state.settings.compactView && store in state.selectedStores,
+                                        val sectionKey = "$tab-$store"
+                                        val expanded = sectionKey !in collapsedStores
+                                        item(key = "store-$store") {
+                                            StoreHeader(store, group.size, expanded, text) {
+                                                collapsedStores = if (expanded) collapsedStores + sectionKey else collapsedStores - sectionKey
+                                            }
+                                        }
+                                        if (expanded) items(group, key = { it.campaignId }) { offer ->
+                                            CatalogOffer(offer, text, now, marks[offer.gameKey], store in state.selectedStores,
                                                 { openDetails(offer) }, { onOpenOffer(offer); model.act(offer, "read") }, action)
                                         }
                                     }
@@ -262,19 +291,25 @@ private fun FeedNotice(message: String) {
 }
 
 @Composable
-private fun StoreHeader(store: String, count: Int) {
+private fun StoreHeader(store: String, count: Int, expanded: Boolean, text: UiText, toggle: () -> Unit) {
     val dark = MaterialTheme.colorScheme.background == Color.Black
     val colors = when (store) {
         "steam" -> if (dark) Color(0xFF132737) to Color(0xFFA9D6FF) else Color(0xFFDDECF9) to Color(0xFF185484)
         "epic" -> if (dark) Color(0xFF10292C) to Color(0xFF96E0E5) else Color(0xFFD9EFF1) to Color(0xFF076476)
         else -> if (dark) Color(0xFF192C1B) to Color(0xFFAFE2A4) else Color(0xFFE1EFDC) to Color(0xFF286332)
     }
-    Column(Modifier.fillMaxWidth().background(colors.first).padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            CompositionLocalProvider(LocalContentColor provides colors.second) { StoreLogo(store, Modifier.size(20.dp)) }
-            Text(storeName(store), Modifier.weight(1f).padding(start = 8.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = colors.second)
-            Text(count.toString(), style = MaterialTheme.typography.labelLarge, color = colors.second)
-        }
+    Row(
+        Modifier.fillMaxWidth().background(colors.first)
+            .semantics { stateDescription = if (expanded) text.choose("Развёрнуто", "Expanded") else text.choose("Свёрнуто", "Collapsed") }
+            .clickable(role = Role.Button, onClickLabel = if (expanded) text.choose("Свернуть", "Collapse") else text.choose("Развернуть", "Expand"), onClick = toggle)
+            .heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CompositionLocalProvider(LocalContentColor provides colors.second) { StoreLogo(store, Modifier.size(20.dp)) }
+        Text(storeName(store), Modifier.weight(1f).padding(start = 8.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall, color = colors.second)
+        Text(count.toString(), style = MaterialTheme.typography.labelLarge, color = colors.second)
+        Spacer(Modifier.width(8.dp))
+        CompositionLocalProvider(LocalContentColor provides colors.second) { AppIcon("chevron", Modifier.size(18.dp).rotate(if (expanded) 90f else 0f)) }
     }
 }
 
@@ -322,7 +357,11 @@ private fun ContentBadge(type: String, text: UiText) {
     val dark = MaterialTheme.colorScheme.background == Color.Black
     val color = when (type) {
         "dlc" -> if (dark) Color(0xFF96E0E5) else Color(0xFF076476)
-        "tool", "software" -> if (dark) Color(0xFFAFE2A4) else Color(0xFF286332)
+        "package" -> if (dark) Color(0xFFD3B5FF) else Color(0xFF7041A1)
+        "soundtrack" -> if (dark) Color(0xFFFFB1D0) else Color(0xFF9C365D)
+        "demo" -> if (dark) Color(0xFFF1CE8B) else Color(0xFF795411)
+        "tool", "software" -> if (dark) Color(0xFFA9D6FF) else Color(0xFF185484)
+        "game" -> if (dark) Color(0xFFAFE2A4) else Color(0xFF286332)
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Text(contentLabel(type, text),
@@ -357,7 +396,7 @@ private fun MarkActions(offer: StoredOffer, mark: PersonalMark?, text: UiText, a
 }
 
 @Composable
-private fun OfferDetails(offer: StoredOffer, text: UiText, now: Long, mark: PersonalMark?, cover: Boolean, back: () -> Unit,
+private fun OfferDetails(offer: StoredOffer, text: UiText, now: Long, mark: PersonalMark?, back: () -> Unit,
     open: (StoredOffer) -> Unit, action: (StoredOffer, String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -366,7 +405,7 @@ private fun OfferDetails(offer: StoredOffer, text: UiText, now: Long, mark: Pers
             Text(storeName(offer.store), style = MaterialTheme.typography.titleMedium)
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (cover) OfferCover(offer.store, offer.imageUrl, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)))
+            OfferCover(offer.store, offer.imageUrl, Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)))
             Text(offer.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(contentLabel(offer.contentType, text), color = MaterialTheme.colorScheme.primary)
             Text(offerTiming(offer, now, text))
@@ -397,7 +436,8 @@ private fun contentLabel(type: String, text: UiText): String = when (type) {
     "demo" -> text.choose("Демо", "Demo")
     "tool", "software" -> text.choose("Программа", "Software")
     "package" -> text.choose("Набор", "Package")
-    else -> text.choose("Игра", "Game")
+    "game" -> text.choose("Игра", "Game")
+    else -> text.choose("Тип не указан", "Unknown type")
 }
 
 private fun ratingLabel(offer: StoredOffer, text: UiText): String? = when {
@@ -441,24 +481,38 @@ private fun StoreLogo(store: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun SortSelector(sort: String, text: UiText, change: (String) -> Unit, compact: Boolean = false) {
+internal fun SortSelector(sort: String, text: UiText, change: (String) -> Unit, compact: Boolean = false, showCompactLabel: Boolean = false) {
     var expanded by remember { mutableStateOf(false) }
     val choices = listOf("ending" to text.choose("Скоро завершатся", "Ending soon"), "newest" to text.choose("Сначала новые", "Newest first"),
         "title" to text.choose("По названию", "Title"), "rating" to text.choose("Рейтинг Steam", "Steam rating"))
     Box {
-        val label = if (compact) when (sort) {
-            "newest" -> text.choose("Новые", "Newest")
-            "title" -> text.choose("А–Я", "A–Z")
-            "rating" -> text.choose("Рейтинг", "Rating")
-            else -> text.choose("По сроку", "Ending")
-        } else choices.find { it.first == sort }?.second ?: choices.first().second
-        TextButton(onClick = { expanded = true }) {
-            AppIcon("sort")
-            Spacer(Modifier.width(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium)
+        val label = choices.find { it.first == sort }?.second ?: choices.first().second
+        if (compact && showCompactLabel) {
+            val shortLabel = when (sort) {
+                "newest" -> text.choose("Новые", "Newest")
+                "title" -> text.choose("А–Я", "A–Z")
+                "rating" -> text.choose("Рейтинг", "Rating")
+                else -> text.choose("По сроку", "Ending")
+            }
+            TextButton(onClick = { expanded = true }, contentPadding = PaddingValues(horizontal = 4.dp),
+                modifier = Modifier.width(104.dp).semantics { contentDescription = text.choose("Сортировка · ", "Sort · ") + label },
+            ) {
+                AppIcon("sort", Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(shortLabel, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+        } else if (compact) {
+            IconButton(onClick = { expanded = true }) { AppIcon("sort", label = text.choose("Сортировка · ", "Sort · ") + label) }
+        } else {
+            TextButton(onClick = { expanded = true }) {
+                AppIcon("sort")
+                Spacer(Modifier.width(4.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium)
+            }
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-            choices.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { expanded = false; change(key) }) }
+            choices.forEach { (key, label) -> DropdownMenuItem(text = { Text(label) },
+                trailingIcon = { if (key == sort) AppIcon("check") }, onClick = { expanded = false; change(key) }) }
         }
     }
 }

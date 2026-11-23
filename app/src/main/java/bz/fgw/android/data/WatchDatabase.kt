@@ -22,7 +22,6 @@ data class WatchSettings(
     val intervalMinutes: Int = intervalHours * 60,
     val reminderHours: Int = 3,
     val filtersJson: String = "{}",
-    val compactView: Boolean = false,
     val badgeEnabled: Boolean = true,
     val sortBy: String = "ending",
     val historyEnabled: Boolean = true,
@@ -218,7 +217,7 @@ interface WatchDao {
 @ColumnTypeConverters(StringListConverter::class)
 @Database(
     entities = [WatchSettings::class, StoredOffer::class, CheckStatus::class, NotificationEvent::class, PersonalMark::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class WatchDatabase : RoomDatabase() {
@@ -280,4 +279,25 @@ val MIGRATION_3_4 = Migration(3, 4) { db ->
 
 val MIGRATION_4_5 = Migration(4, 5) { db ->
     db.execSQL("ALTER TABLE offers ADD COLUMN epicRatingCheckedAt INTEGER NOT NULL DEFAULT 0")
+}
+
+val MIGRATION_5_6 = Migration(5, 6) { db ->
+    db.execSQL("""CREATE TABLE settings_new (
+        id INTEGER NOT NULL PRIMARY KEY, country TEXT NOT NULL, revision INTEGER NOT NULL,
+        notificationsEnabled INTEGER NOT NULL, stores TEXT NOT NULL, language TEXT NOT NULL,
+        intervalHours INTEGER NOT NULL, remindersEnabled INTEGER NOT NULL, quietHoursEnabled INTEGER NOT NULL,
+        quietStartMinute INTEGER NOT NULL, quietEndMinute INTEGER NOT NULL, trackFreeToKeep INTEGER NOT NULL,
+        intervalMinutes INTEGER NOT NULL, reminderHours INTEGER NOT NULL, filtersJson TEXT NOT NULL,
+        badgeEnabled INTEGER NOT NULL, sortBy TEXT NOT NULL, historyEnabled INTEGER NOT NULL,
+        historyRetentionDays INTEGER NOT NULL, notifiedRetentionDays INTEGER NOT NULL,
+        renotifyAfterRetention INTEGER NOT NULL, theme TEXT NOT NULL
+    )""")
+    db.execSQL("""INSERT INTO settings_new SELECT
+        id, country, revision, notificationsEnabled, stores, language, intervalHours,
+        remindersEnabled, quietHoursEnabled, quietStartMinute, quietEndMinute, trackFreeToKeep,
+        intervalMinutes, reminderHours, filtersJson, badgeEnabled, sortBy, historyEnabled,
+        historyRetentionDays, notifiedRetentionDays, renotifyAfterRetention, theme
+        FROM settings""")
+    db.execSQL("DROP TABLE settings")
+    db.execSQL("ALTER TABLE settings_new RENAME TO settings")
 }

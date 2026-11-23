@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
@@ -43,12 +48,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import bz.fgw.android.data.FilterPreferences
 import bz.fgw.android.data.CheckStatus
 import bz.fgw.android.data.FeedState
@@ -119,7 +127,7 @@ internal fun SettingsScreen(
             Text(
                 if (page == "country") text.choose("Страна каталога", "Catalog country")
                 else destinations.find { it.id == page }?.title ?: text.settings,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleLarge.let { if (page == "help") it.copy(fontSize = (it.fontSize.value - 1).sp) else it },
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
             )
@@ -169,7 +177,8 @@ internal fun SettingsScreen(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(15, 30, 60, 180, 360, 720, 1440).forEach { minutes ->
                             FilterChip(selected = state.settings.intervalMinutes == minutes, onClick = { model.setIntervalMinutes(minutes) },
-                                label = { Text(if (minutes < 60) text.choose("$minutes мин", "$minutes min") else text.choose("${minutes / 60} ч", "${minutes / 60} h")) }, modifier = Modifier.heightIn(min = 48.dp))
+                                label = { Text(if (minutes < 60) text.choose("$minutes мин", "$minutes min") else text.choose("${minutes / 60} ч", "${minutes / 60} h"), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                modifier = Modifier.width(88.dp).heightIn(min = 48.dp))
                         }
                     }
                     Text(text.choose("Проверка выполняется при подключении к интернету. Android может отложить запуск для экономии заряда.", "Checks need an internet connection. Android may delay them to save battery."), style = MaterialTheme.typography.bodySmall)
@@ -244,12 +253,13 @@ internal fun SettingsScreen(
                         }
                     }
                     Text(text.choose("Тема", "Theme"), style = MaterialTheme.typography.titleSmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("system" to text.choose("Системная", "System"), "light" to text.choose("Светлая", "Light"), "dark" to text.choose("Тёмная OLED", "OLED dark")).forEach { (key, label) ->
-                            FilterChip(selected = state.settings.theme == key, onClick = { model.setTheme(key) }, label = { Text(label) })
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("system" to text.choose("Системная", "System"), "light" to text.choose("Светлая", "Light"), "dark" to "OLED").forEach { (key, label) ->
+                            FilterChip(selected = state.settings.theme == key, onClick = { model.setTheme(key) },
+                                label = { Text(label, fontSize = 12.sp, maxLines = 1) },
+                                modifier = Modifier.heightIn(min = 48.dp))
                         }
                     }
-                    ToggleRow(text.choose("Компактный вид", "Compact view"), state.settings.compactView, model::setCompact)
                     ToggleRow(text.choose("Счётчик активных раздач", "Active giveaway count"), state.settings.badgeEnabled, model::setBadge)
                     SortSelector(state.settings.sortBy, text, model::setSort)
                     TextButton(onClick = model::markAllRead) {
@@ -303,8 +313,8 @@ internal fun SettingsScreen(
                 SettingsGroup("") {
                     ToggleRow(text.choose("Записывать журнал проверок", "Record check log"), logging, model::setLogging)
                     Text(text.choose(
-                        "Журнал хранится на устройстве (до 1 МиБ). При включённой записи проверка с этого экрана повторно запросит недостающие оценки Epic. После выключения накопленный журнал можно сохранить.",
-                        "Up to 1 MiB is kept on this device. With recording on, checking from this screen retries missing Epic ratings. You can save the log after turning recording off.",
+                        "Журнал хранится на устройстве (до 1 МиБ). После выключения накопленный журнал можно сохранить.",
+                        "Up to 1 MiB is kept on this device. You can save the log after turning recording off.",
                     ), style = MaterialTheme.typography.bodySmall)
                     Button(onClick = model::checkDiagnostics, enabled = !refreshing && state.settings.trackFreeToKeep && state.selectedStores.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                         Text(if (refreshing) text.refreshing else text.refresh)
@@ -407,31 +417,36 @@ internal fun ToggleRow(label: String, value: Boolean, change: (Boolean) -> Unit)
 @Composable
 private fun SourceDiagnostics(store: String, check: CheckStatus?, text: UiText) {
     var expanded by rememberSaveable(store) { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(storeName(store), style = MaterialTheme.typography.titleMedium)
-        Text(check?.lastSuccess?.let(text::lastSuccess) ?: text.firstCheck)
-        if (check != null) {
-            Text(when {
-                check.error == "partial" -> text.partial
-                check.error != null -> text.sourceError
-                !check.complete -> text.partial
-                else -> text.success
-            })
-            Text(text.choose("Запросов при последней проверке · ${check.requestCount}", "Requests in last check · ${check.requestCount}"), style = MaterialTheme.typography.bodySmall)
-            check.retryAt?.let { Text(text.choose("Повтор после ${text.time(it)}", "Retry after ${text.time(it)}"), style = MaterialTheme.typography.bodySmall) }
-            if (!check.details.isBlank() || check.error != null) {
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) text.choose("Скрыть подробности", "Hide details") else text.choose("Технические подробности", "Technical details"))
+    val details = listOfNotNull(
+        check?.error?.takeUnless { it == "failed" || it == "partial" },
+        check?.details?.takeIf { it.isNotBlank() },
+    ).joinToString("\n")
+    val disclosure = if (details.isEmpty()) Modifier else Modifier.clickable(
+        role = Role.Button,
+        onClickLabel = if (expanded) text.choose("Скрыть подробности", "Hide details") else text.choose("Технические подробности", "Technical details"),
+    ) { expanded = !expanded }
+    Column {
+        Row(Modifier.fillMaxWidth().then(disclosure).heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(storeName(store), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    if (check != null) Text(when {
+                        check.error == "partial" || !check.complete && check.error == null -> text.choose("Неполные данные", "Partial data")
+                        check.error != null -> text.choose("Ошибка", "Error")
+                        else -> text.choose("Обновлено", "Updated")
+                    }, style = MaterialTheme.typography.bodySmall)
                 }
-                if (expanded) Text(
-                    listOfNotNull(
-                        check.error?.takeUnless { it == "failed" || it == "partial" },
-                        check.details.takeIf { it.isNotBlank() },
-                    ).joinToString("\n"),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                val summary = if (check == null) text.firstCheck else listOfNotNull(
+                    check.lastSuccess?.let(text::lastSuccess),
+                    text.choose("${check.requestCount} запр.", if (check.requestCount == 1) "1 request" else "${check.requestCount} requests"),
+                ).joinToString(" · ")
+                Text(summary, style = MaterialTheme.typography.bodySmall)
             }
+            if (details.isNotEmpty()) AppIcon("chevron", Modifier.size(16.dp).rotate(if (expanded) 90f else 0f))
         }
+        check?.retryAt?.let { Text(text.choose("Повтор после ${text.time(it)}", "Retry after ${text.time(it)}"), style = MaterialTheme.typography.bodySmall) }
+        if (expanded && details.isNotEmpty()) Text(details, Modifier.padding(bottom = 6.dp), style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
     }
 }

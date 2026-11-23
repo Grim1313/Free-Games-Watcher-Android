@@ -66,7 +66,6 @@ class FeedViewModel(application: Application) : AndroidViewModel(application) {
     fun setTracking(enabled: Boolean) = save { repository.setTracking(enabled) }
     fun setFilters(filters: FilterPreferences) = save { repository.setFilters(filters) }
     fun setSort(sort: String) = save { repository.setSort(sort) }
-    fun setCompact(compact: Boolean) = save { repository.setCompact(compact) }
     fun setTheme(theme: String) = save { repository.setTheme(theme) }
     fun act(offer: StoredOffer, action: String) = save { repository.act(offer, action) }
     suspend fun performAction(offer: StoredOffer, action: String): MarkUndo? = repository.act(offer, action)
