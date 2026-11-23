@@ -4,7 +4,7 @@
 
 Приложение ищет временные раздачи игр для ПК в Steam, Epic Games Store и GOG. Для каждой раздачи есть ссылка на страницу магазина и срок окончания, если он известен. Поддерживаются Android 8.0 и новее, русский и английский языки.
 
-[Скачать APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v1.0.1/Free-Games-Watcher-Android-1.0.1.apk) · [Релиз 1.0.1](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v1.0.1)
+[Скачать APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v1.0.2/Free-Games-Watcher-Android-1.0.2.apk) · [Релиз 1.0.2](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v1.0.2)
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22bz.fgw.android%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FGrim1313%2FFree-Games-Watcher-Android%22%2C%22author%22%3A%22Grim1313%22%2C%22name%22%3A%22Free%20Games%20Watcher%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Afalse%7D%22%7D"><img src="docs/assets/badge_obtainium.png" width="161" height="48" alt="Добавить Free Games Watcher в Obtainium"></a>
 
@@ -29,7 +29,7 @@
 
 ## Источники данных и приватность
 
-Steam использует два поиска, резервную витрину и региональные варианты покупки StoreBrowse. Epic использует недельную ленту и каталог Browse. Оценку игроков приложение берёт со страницы игры в Epic. Если оценки нет, приложение запрашивает её у стороннего сервиса EGData по идентификатору предложения. При неполном ответе Browse сервис также получает страну и параметры поиска. В обоих случаях EGData видит IP-адрес. GOG проверяется по публичным разделам главной и каталогу. Скриншоты или иллюстрации магазина загружаются при показе карточек. Настройки, история и отметки хранятся на устройстве.
+Steam использует два поиска, резервную витрину и региональные варианты покупки StoreBrowse. Epic использует недельную ленту и каталог Browse. Оценку игроков приложение запрашивает у API рейтингов Epic. Если оценки нет, приложение запрашивает её у стороннего сервиса EGData по идентификатору предложения. При неполном ответе Browse сервис также получает страну и параметры поиска. В обоих случаях EGData видит IP-адрес. GOG проверяется по публичным разделам главной и каталогу. Скриншоты или иллюстрации магазина загружаются при показе карточек. Настройки, история и отметки хранятся на устройстве.
 
 ## Сборка из исходников
 

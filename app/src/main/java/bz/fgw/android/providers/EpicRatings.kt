@@ -2,11 +2,24 @@
 package bz.fgw.android.providers
 
 import org.json.JSONObject
-import org.jsoup.Jsoup
-import org.jsoup.nodes.TextNode
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
-private val playerScore = Regex("""Epic Player Ratings\s+Captured from players in the Epic Games ecosystem\.\s+(\d+(?:\.\d+)?)(?=\s|$)""")
+internal const val EPIC_RATINGS_HOST = "website.graphql.epicgames.com"
+private const val PRODUCT_RESULT_HASH = "4a58e53900301bcbfa5a2a576ece55ec1151c0e69cdddb66891ee18c466054ed"
+private val queryExtension = URLEncoder.encode(
+    """{"persistedQuery":{"version":1,"sha256Hash":"$PRODUCT_RESULT_HASH"}}""", "UTF-8",
+)
+
+private fun fetchEpicScore(namespace: String, request: (String) -> String): Double? {
+    val variables = JSONObject().put("sandboxId", namespace).put("locale", "en")
+    val url = "https://$EPIC_RATINGS_HOST/graphql?operationName=getProductResult" +
+        "&variables=${URLEncoder.encode(variables.toString(), "UTF-8")}&extensions=$queryExtension"
+    val root = JSONObject(request(url))
+    if ((root.optJSONArray("errors")?.length() ?: 0) > 0) return null
+    val result = root.optJSONObject("data")?.optJSONObject("RatingsPolls")?.optJSONObject("getProductResult")
+    return epicPlayerScore(result?.opt("averageRating"))
+}
 
 internal fun epicPlayerScore(value: Any?): Double? =
     (value as? Number)?.toDouble()?.takeIf { it in 1.0..5.0 }
@@ -29,14 +42,10 @@ internal fun enrichEpicRatings(
 
     for (offer in due.take(6)) {
         if (!withinBudget()) break
-        val pageScore = if (offer.url.startsWith("https://store.epicgames.com/en-US/p/")) runCatching {
-            val text = Jsoup.parse(request(offer.url)).body().nodeStream(TextNode::class.java)
-                .iterator().asSequence().map { it.text().trim() }.filter { it.isNotEmpty() }.joinToString(" ")
-            epicPlayerScore(playerScore.find(text)?.groupValues?.get(1)?.toDoubleOrNull())
-        }.getOrNull() else null
-        if (pageScore == null && !withinBudget()) break
-        val rating = pageScore ?: runCatching {
-            val (_, namespace, id) = offer.id.split(':')
+        val (_, namespace, id) = offer.id.split(':')
+        val epicScore = runCatching { fetchEpicScore(namespace, request) }.getOrNull()
+        if (epicScore == null && !withinBudget()) break
+        val rating = epicScore ?: runCatching {
             val polls = JSONObject(request("https://api.egdata.app/offers/$id/polls"))
             if (polls.opt("_id") == namespace) epicPlayerScore(polls.opt("averageRating")) else null
         }.getOrNull()

@@ -21,14 +21,13 @@ class PublicStoreHttp(
         require(uri.scheme == "https" && uri.host in hosts && uri.port == -1 && uri.rawUserInfo == null)
         val connection = connect(uri)
         try {
-            val epicPage = uri.host == "store.epicgames.com" && uri.path.startsWith("/en-US/p/")
-            val ratingLookup = epicPage || (uri.host == "api.egdata.app" && uri.path.endsWith("/polls"))
+            val ratingLookup = uri.host == EPIC_RATINGS_HOST || (uri.host == "api.egdata.app" && uri.path.endsWith("/polls"))
             connection.connectTimeout = if (ratingLookup) 4_000 else 12_000
             connection.readTimeout = connection.connectTimeout
             connection.useCaches = false
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("User-Agent", "FreeGamesWatcherAndroid/1.0")
-            val productPage = epicPage || uri.host == "store.steampowered.com" &&
+            val productPage = uri.host == "store.steampowered.com" &&
                 (uri.path.startsWith("/app/") || uri.path.startsWith("/sub/"))
             connection.setRequestProperty("Accept", if (productPage) "text/html" else "application/json")
             val code = connection.responseCode
@@ -66,7 +65,7 @@ class PublicStoreHttp(
     private companion object {
         val hosts = setOf(
             "store.steampowered.com", "api.steampowered.com", "store.epicgames.com",
-            "store-site-backend-static.ak.epicgames.com", "api.egdata.app",
+            "store-site-backend-static.ak.epicgames.com", EPIC_RATINGS_HOST, "api.egdata.app",
             "sections.gog.com", "catalog.gog.com",
         )
     }

@@ -173,21 +173,24 @@ class EpicGogProviderTest {
 
     @Test fun activeAndUpcomingUsePlayerScoresAndReuseTheirCache() {
         val checkTime = Instant.parse("2026-11-19T12:00:00Z").toEpochMilli()
+        val activeNamespace = "3d6441ab9d4246208bc97d7babf664b5"
+        val feed = weekly().replaceFirst("test-namespace", activeNamespace)
         val urls = mutableListOf<String>()
         val provider = EpicProvider(StoreHttp { url ->
             urls += url
             when {
-                "freeGamesPromotions" in url -> weekly()
-                "graphql" in url -> catalog().toString()
-                url.endsWith("/test-game") -> "<h2>Epic Player Ratings</h2><span>Captured from players in the Epic Games ecosystem.</span><span>3.7</span><p>Critic Reviews 92%</p>"
-                url.endsWith("/future-game") -> throw StoreHttpException(403, null)
+                "freeGamesPromotions" in url -> feed
+                "searchStoreQuery" in url -> catalog().toString()
+                url.startsWith("https://website.graphql.epicgames.com/graphql?operationName=getProductResult&") && activeNamespace in url ->
+                    """{"data":{"RatingsPolls":{"getProductResult":{"averageRating":3.62,"pollResult":[]}}}}"""
+                "getProductResult" in url -> throw StoreHttpException(503, null)
                 url.endsWith("/offers/456/polls") -> """{"_id":"test-namespace","averageRating":3.64,"pollResult":[{"total":99}]}"""
                 else -> error("Unexpected request: $url")
             }
         })
         val first = provider.fetch("US", emptyList(), checkTime)
         assertTrue(first.complete)
-        assertEquals(3.7, first.offers.single().ratingValue!!, 0.0)
+        assertEquals(3.62, first.offers.single().ratingValue!!, 0.0)
         assertEquals(3.64, first.upcoming.single().ratingValue!!, 0.0)
         assertNull(first.upcoming.single().reviewCount)
         assertEquals(5, urls.size)
@@ -197,12 +200,12 @@ class EpicGogProviderTest {
         assertEquals(7, urls.size)
     }
 
-    @Test fun ignoresCriticsInvalidStarsAndMismatchedPolls() {
+    @Test fun ignoresInvalidStarsAndMismatchedPolls() {
         val game = StoreOffer("epic:ns:game", "Game", "https://store.epicgames.com/en-US/p/game")
         for (poll in listOf("""{"_id":"other","averageRating":4.5}""", """{"_id":"ns","averageRating":"4.5"}""",
             """{"_id":"ns","averageRating":6}""", """{"_id":"ns","averageRating":0}""")) {
             val result = enrichEpicRatings(listOf(game), emptyList(), now, { true }) { url ->
-                if (url.endsWith("/polls")) poll else "<h2>Epic Player Ratings</h2><h2>Critic Reviews</h2><p>4.9</p>"
+                if (url.endsWith("/polls")) poll else """{"data":{"RatingsPolls":{"getProductResult":{"averageRating":"4.9"}}}}"""
             }.single()
             assertNull(result.ratingValue)
             assertEquals(now, result.epicRatingCheckedAt)
