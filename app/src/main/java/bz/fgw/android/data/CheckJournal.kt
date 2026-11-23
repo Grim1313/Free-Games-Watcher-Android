@@ -2,6 +2,7 @@ package bz.fgw.android.data
 
 import android.content.Context
 import android.os.Build
+import androidx.core.content.edit
 import bz.fgw.android.providers.PublicStoreHttp
 import bz.fgw.android.providers.StoreHttp
 import bz.fgw.android.providers.StoreHttpException
@@ -23,7 +24,7 @@ internal class CheckJournal(context: Context) {
     private var writeError: String? = null
 
     @Synchronized fun setEnabled(value: Boolean) {
-        prefs.edit().putBoolean("recording", value).apply()
+        prefs.edit { putBoolean("recording", value) }
         recording.value = value
     }
 
