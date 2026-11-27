@@ -66,7 +66,7 @@ class PublicStoreHttp(
         val hosts = setOf(
             "store.steampowered.com", "api.steampowered.com", "store.epicgames.com",
             "store-site-backend-static.ak.epicgames.com", EPIC_RATINGS_HOST, "api.egdata.app",
-            "sections.gog.com", "catalog.gog.com",
+            "sections.gog.com", "catalog.gog.com", "api.gog.com",
         )
     }
 }

@@ -6,6 +6,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackupCodecTest {
+    @Test fun gogHistoryPrefersTheProductPageOverTheClaimHomepage() {
+        val url = "https://www.gog.com/en/game/dead_age_2"
+        val gog = offer.copy(store = "gog", id = "gog:1979865595", url = url)
+        val root = JSONObject(BackupCodec.encode(WatchSettings(), emptyList(), listOf(gog), true))
+        val row = root.getJSONArray("history").getJSONObject(0)
+        row.put("url", url.replace("/en/", "/")).put("claimUrl", "https://www.gog.com/en/")
+        assertEquals(url, BackupCodec.decode(root.toString()).history.single().url)
+        row.put("url", "https://other.example/game").put("claimUrl", url)
+        assertEquals(url, BackupCodec.decode(root.toString()).history.single().url)
+    }
     @Test fun epicScoresRoundTripInBrowserFormatWithoutReviewCounts() {
         val epic = offer.copy(id = "epic:ns:game", url = "https://store.epicgames.com/en-US/p/game", store = "epic",
             ratingPercent = null, reviewCount = null, ratingValue = 3.64, epicRatingCheckedAt = 1499)

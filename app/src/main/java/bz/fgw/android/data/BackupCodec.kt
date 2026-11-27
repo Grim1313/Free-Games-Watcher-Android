@@ -1,5 +1,6 @@
 package bz.fgw.android.data
 
+import bz.fgw.android.providers.GogProvider
 import bz.fgw.android.providers.StoreUrls
 import bz.fgw.android.providers.epicPlayerScore
 import java.net.URI
@@ -137,9 +138,14 @@ object BackupCodec {
             store == "gog" && count != null -> item.optDouble("gogRating").takeIf { it > 0 && it <= 5 }
             else -> null
         }
+        val claimUrl = item.optString("claimUrl").ifEmpty { item.optString("url") }
+        val url = if (store == "gog") {
+            safeUrl(id, item.optString("url")).takeUnless { it == GogProvider.LEGACY_HOMEPAGE }
+                ?: safeUrl(id, claimUrl)
+        } else safeUrl(id, claimUrl)
         return StoredOffer(
             campaignId = item.optString("campaignId").ifEmpty { item.optString("fingerprint") }.ifEmpty { "$id|free-to-keep" },
-            id = id, title = title, url = safeUrl(id, item.optString("claimUrl").ifEmpty { item.optString("url") }),
+            id = id, title = title, url = url,
             start = time(item, "startsAt").takeIf { it > 0 }, end = time(item, "endsAt").takeIf { it > 0 },
             country = country, lastConfirmed = maxOf(time(item, "lastSeenAt"), time(item, "firstSeenAt")), confirmedRevision = -1,
             store = store, ended = item.optBoolean("confirmedEnded") || item.optString("status") == "expired",
@@ -195,7 +201,7 @@ object BackupCodec {
         val store = storeOf(id)
         val fallback = when (store) {
             "steam" -> "https://store.steampowered.com/${id.replace(':', '/')}/"
-            "gog" -> "https://www.gog.com/en/"
+            "gog" -> GogProvider.LEGACY_HOMEPAGE
             else -> "https://store.epicgames.com/en-US/"
         }
         val uri = runCatching { URI(value) }.getOrNull() ?: return fallback

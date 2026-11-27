@@ -2,7 +2,7 @@
 package bz.fgw.android.providers
 
 import org.json.JSONObject
-import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.Locale
 import java.math.BigDecimal
 import java.util.Currency
@@ -76,10 +76,10 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         val product = properties.getJSONObject("product")
         val id = product.get("id").toString()
         val title = product.getString("title").trim()
-        val slug = product.getString("slug")
-        require(id.matches(Regex("[0-9]{1,20}")) && title.isNotEmpty() && slug.matches(Regex("[a-zA-Z0-9_-]+"))) { "Invalid GOG product" }
-        val start = if (properties.isNull("startDate")) null else Instant.parse(properties.getString("startDate")).toEpochMilli()
-        val end = Instant.parse(properties.getString("endDate")).toEpochMilli()
+        val url = gameUrl(product)
+        require(id.matches(productId) && title.isNotEmpty()) { "Invalid GOG product" }
+        val start = if (properties.isNull("startDate")) null else OffsetDateTime.parse(properties.getString("startDate")).toInstant().toEpochMilli()
+        val end = OffsetDateTime.parse(properties.getString("endDate")).toInstant().toEpochMilli()
         require(start == null || end > start) { "Invalid giveaway dates" }
         val type = product.optString("productType")
         val tags = product.optJSONArray("tags")
@@ -104,7 +104,7 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
                 url?.takeIf { StoreUrls.isCover("gog", it) }
             }
         }
-        val offer = StoreOffer("gog:$id", title.take(300), "https://www.gog.com/en/", start, end,
+        val offer = StoreOffer("gog:$id", title.take(300), url, start, end,
             screenshot ?: product.optString("coverHorizontal").takeIf { StoreUrls.isCover("gog", it) },
             originalPrice = amount, currency = currency,
             priceText = price?.optString("base")?.takeIf { amount != null && it.isNotBlank() },
@@ -120,5 +120,27 @@ class GogProvider(private val http: StoreHttp = PublicStoreHttp()) : StoreProvid
         )
         return if (start != null && start > now) StoreResult(emptyList(), upcoming = listOf(offer))
             else StoreResult(listOf(offer))
+    }
+
+    /** Older Android releases saved only the homepage and the numeric product ID. */
+    fun resolveLegacyUrl(offerId: String): String {
+        require(offerId.startsWith("gog:"))
+        val id = offerId.removePrefix("gog:")
+        require(id.matches(productId))
+        val product = JSONObject(http.get("https://api.gog.com/products/$id"))
+        require(product.get("id").toString() == id)
+        return gameUrl(product)
+    }
+
+    private fun gameUrl(product: JSONObject): String {
+        val slug = product.getString("slug")
+        require(slug.matches(productSlug)) { "Invalid GOG product slug" }
+        return "https://www.gog.com/en/game/$slug"
+    }
+
+    companion object {
+        const val LEGACY_HOMEPAGE = "https://www.gog.com/en/"
+        private val productId = Regex("[0-9]{1,20}")
+        private val productSlug = Regex("[a-zA-Z0-9_-]+")
     }
 }

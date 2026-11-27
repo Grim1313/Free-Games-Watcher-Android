@@ -28,6 +28,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bz.fgw.android.data.StoredOffer
+import bz.fgw.android.providers.GogProvider
 import bz.fgw.android.providers.StoreUrls
 import bz.fgw.android.ui.FeedScreen
 import bz.fgw.android.ui.FeedViewModel
@@ -37,6 +38,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val model: FeedViewModel by viewModels()
@@ -44,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private var systemRemindersEnabled by mutableStateOf(false)
     private var alertKey by mutableStateOf<String?>(null)
     private var notificationOffer by mutableStateOf<StoredOffer?>(null)
+    private var legacyLinkLookup: Job? = null
     private val requestNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         systemNotificationsEnabled = notificationsAvailable()
         systemRemindersEnabled = remindersAvailable()
@@ -145,12 +150,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openOffer(offer: StoredOffer) {
-        if (!StoreUrls.isSafe(offer.store, offer.url)) {
+        legacyLinkLookup?.cancel()
+        if (offer.store == "gog" && offer.url == GogProvider.LEGACY_HOMEPAGE) {
+            legacyLinkLookup = lifecycleScope.launch {
+                val url = withContext(Dispatchers.IO) {
+                    runCatching { GogProvider().resolveLegacyUrl(offer.id) }.getOrNull()
+                }
+                if (url == null) alertKey = "unsafe" else openStoreUrl(offer.store, url)
+            }
+        } else {
+            openStoreUrl(offer.store, offer.url)
+        }
+    }
+
+    private fun openStoreUrl(store: String, url: String) {
+        if (!StoreUrls.isSafe(store, url)) {
             alertKey = "unsafe"
             return
         }
         try {
-            startActivity(Intent(Intent.ACTION_VIEW, offer.url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE))
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE))
         } catch (_: ActivityNotFoundException) {
             alertKey = "browser"
         }

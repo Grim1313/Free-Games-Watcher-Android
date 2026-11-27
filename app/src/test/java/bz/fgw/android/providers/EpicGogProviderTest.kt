@@ -252,7 +252,7 @@ class EpicGogProviderTest {
         val root = fixture("gog-a-new-beginning.json")
         val result = GogProvider().parseGiveaway(root.getJSONObject("section"), Instant.parse("2026-10-31T12:00:00Z").toEpochMilli())
         assertEquals("gog:1207659150", result.offers.single().id)
-        assertEquals("https://www.gog.com/en/", result.offers.single().url)
+        assertEquals("https://www.gog.com/en/game/a_new_beginning", result.offers.single().url)
         assertEquals(Instant.parse("2026-11-02T14:00:59Z").toEpochMilli(), result.offers.single().end)
         assertEquals(999L, result.offers.single().originalPrice)
         assertEquals("USD", result.offers.single().currency)
@@ -271,6 +271,19 @@ class EpicGogProviderTest {
         assertTrue(result.offers.isEmpty())
         assertFalse(result.complete)
         assertTrue(result.successful)
+    }
+
+    @Test fun legacyGogLinksResolveOnlyForTheRequestedProductAndAValidSlug() {
+        val product = JSONObject().put("id", 1979865595).put("slug", "dead_age_2")
+        val provider = GogProvider(StoreHttp { url ->
+            assertEquals("https://api.gog.com/products/1979865595", url)
+            product.toString()
+        })
+        assertEquals("https://www.gog.com/en/game/dead_age_2", provider.resolveLegacyUrl("gog:1979865595"))
+        product.put("slug", "../games")
+        assertThrows(IllegalArgumentException::class.java) { provider.resolveLegacyUrl("gog:1979865595") }
+        product.put("slug", "different_game").put("id", 1)
+        assertThrows(IllegalArgumentException::class.java) { provider.resolveLegacyUrl("gog:1979865595") }
     }
 
     @Test fun optionalScreenshotsUseStoreHostsAndRetainCoverFallback() {

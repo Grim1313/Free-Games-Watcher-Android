@@ -7,7 +7,7 @@
 
 Free Games Watcher finds limited-time PC game giveaways on Steam, the Epic Games Store and GOG. Each offer shows the deadline when available and links to the store page where you can claim the game. The app runs on Android 8.0 or later and supports English and Russian.
 
-[Download the APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v1.0.4/Free-Games-Watcher-Android-1.0.4.apk) · [Release notes for 1.0.4](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v1.0.4)
+[Download the APK](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/download/v1.0.5/Free-Games-Watcher-Android-1.0.5.apk) · [Release notes for 1.0.5](https://github.com/Grim1313/Free-Games-Watcher-Android/releases/tag/v1.0.5)
 
 <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22bz.fgw.android%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FGrim1313%2FFree-Games-Watcher-Android%22%2C%22author%22%3A%22Grim1313%22%2C%22name%22%3A%22Free%20Games%20Watcher%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Afalse%7D%22%7D"><img src="docs/assets/badge_obtainium.png" width="161" height="48" alt="Get it on Obtainium"></a>
 
@@ -32,7 +32,7 @@ Offers are grouped by store. Tap a store heading to collapse or expand its offer
 
 ## Data sources and privacy
 
-Steam checks use two searches, a fallback storefront listing and regional purchase options from StoreBrowse. Epic checks use its weekly feed and Browse catalog. The app requests player ratings from Epic’s ratings API. If the API supplies no score, it queries the third-party EGData service using the offer ID. EGData also receives the catalog country and search parameters when Browse returns incomplete results. Both requests disclose your IP address. GOG checks use public homepage sections and the catalog. Screenshots or store artwork load when you view an offer. Your settings, history and claimed games stay on your device.
+Steam checks use two searches, a fallback storefront listing and regional purchase options from StoreBrowse. Epic checks use its weekly feed and Browse catalog. The app requests player ratings from Epic’s ratings API. If the API supplies no score, it queries the third-party EGData service using the offer ID. EGData also receives the catalog country and search parameters when Browse returns incomplete results. Both requests disclose your IP address. GOG checks use public homepage sections and the catalog. When you open an older GOG entry that contains only the homepage link, the app looks up the game by its product ID on GOG. Screenshots or store artwork load when you view an offer. Your settings, history and claimed games stay on your device.
 
 ## Build from source
 
